@@ -3,6 +3,14 @@
 *.o
 *.out
 
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+env/
+
 # Node / web UI
 node_modules/
 web/node_modules/

@@ -13,13 +13,18 @@ function buildAdjacency(graph) {
   const adj = new Map(graph.cities.map((c) => [c.id, []]));
   const weights = new Map();
 
-  for (const [a, b] of graph.roads) {
-    const ca = byId.get(a);
-    const cb = byId.get(b);
-    if (!ca || !cb) continue;
-    const dx = ca.x - cb.x;
-    const dy = ca.y - cb.y;
-    const w = Math.max(1, Math.round(Math.sqrt(dx * dx + dy * dy) / 20));
+  for (const road of graph.roads) {
+    const [a, b, kmDist] = road;
+    if (!byId.has(a) || !byId.has(b)) continue;
+    // Use real km distance from graph; fall back to pixel estimate if missing
+    let w;
+    if (typeof kmDist === "number" && kmDist > 0) {
+      w = kmDist;
+    } else {
+      const ca = byId.get(a), cb = byId.get(b);
+      const dx = ca.x - cb.x, dy = ca.y - cb.y;
+      w = Math.max(1, Math.round(Math.sqrt(dx * dx + dy * dy) / 20));
+    }
     adj.get(a).push({ to: b, w });
     adj.get(b).push({ to: a, w });
     weights.set(edgeKey(a, b), w);
@@ -83,10 +88,14 @@ export function shortestPath(fromId, toId) {
   return { path, distance: d };
 }
 
-export function computeSoloFare(distance) {
-  const base = 40;
-  const perUnit = 15;
-  return Math.round(base + perUnit * distance);
+export function computeSoloFare(distance, numPersons = 1) {
+  // Base ₹55 + ₹20/km — raised ~32% from original rates
+  const base = 55;
+  const perKm = 20;
+  const persons = Math.max(1, Math.min(6, Math.round(numPersons)));
+  // Each extra person adds 60% of the per-km rate (shared cab, not full extra)
+  const personMultiplier = 1 + (persons - 1) * 0.6;
+  return Math.round((base + perKm * distance) * personMultiplier);
 }
 
 export function computeSharedPricing(soloFare, riders) {
@@ -126,7 +135,7 @@ export function snapshot() {
   };
 }
 
-export function createRideRequest({ userName, fromCityId, toCityId, wantsSharing }) {
+export function createRideRequest({ userName, fromCityId, toCityId, wantsSharing, numPersons }) {
   if (fromCityId === toCityId) {
     return { ok: false, error: "From and To cannot be the same city." };
   }
@@ -135,16 +144,19 @@ export function createRideRequest({ userName, fromCityId, toCityId, wantsSharing
     return { ok: false, error: "No route found between selected cities." };
   }
 
+  const persons = Math.max(1, Math.min(6, Math.round(Number(numPersons) || 1)));
+
   const request = {
     id: id("req"),
     userName,
     fromCityId,
     toCityId,
     wantsSharing: !!wantsSharing,
+    numPersons: persons,
     status: "pending_driver", // pending_driver | accepted | declined | cancelled
     createdAt: nowIso(),
     route,
-    soloFare: computeSoloFare(route.distance),
+    soloFare: computeSoloFare(route.distance, persons),
     assignedDriverId: null,
     rideId: null
   };
@@ -154,7 +166,7 @@ export function createRideRequest({ userName, fromCityId, toCityId, wantsSharing
     id: id("n"),
     type: "request_created",
     at: nowIso(),
-    message: `New request by ${userName}: ${fromCityId} → ${toCityId}`,
+    message: `New request by ${userName} (${persons} person${persons > 1 ? "s" : ""}): ${fromCityId} → ${toCityId}`,
     requestId: request.id,
     driverId: request.assignedDriverId
   });
@@ -229,18 +241,19 @@ export function driverRespond({ driverId, requestId, accept }) {
 }
 
 function sameDirectionRouteScore(aRoute, bRoute) {
-  // Simple heuristic: share candidates if they share at least 2 consecutive nodes.
+  // Count total consecutive edges shared in the same direction.
+  // A score >= 1 means at least one shared edge (2 consecutive nodes).
   const a = aRoute.path;
   const b = bRoute.path;
-  let best = 0;
-  for (let i = 0; i < a.length - 1; i++) {
-    for (let j = 0; j < b.length - 1; j++) {
-      if (a[i] === b[j] && a[i + 1] === b[j + 1]) {
-        best = Math.max(best, 2);
-      }
-    }
+  let sharedEdges = 0;
+  const bEdges = new Set();
+  for (let j = 0; j < b.length - 1; j++) {
+    bEdges.add(`${b[j]}::${b[j + 1]}`);
   }
-  return best;
+  for (let i = 0; i < a.length - 1; i++) {
+    if (bEdges.has(`${a[i]}::${a[i + 1]}`)) sharedEdges++;
+  }
+  return sharedEdges;
 }
 
 function indexOnRoute(route, cityId) {
@@ -260,11 +273,27 @@ export function listShareCandidates(requestId) {
   const req = state.requests.find((r) => r.id === requestId);
   if (!req) return { ok: false, error: "Request not found." };
   if (!req.wantsSharing) return { ok: false, error: "Request not marked for sharing." };
-  if (req.rideId) return { ok: false, error: "This request is already in an active ride." };
-  if (req.status === "cancelled" || req.status === "declined") return { ok: false, error: "This request is not eligible for sharing." };
+  // Block only if the request is definitively done
+  if (req.status === "cancelled" || req.status === "declined") {
+    return { ok: false, error: "This request is cancelled or declined — not eligible for sharing." };
+  }
+  // Request already has a driver and is in an active ride — sharing search is no longer relevant
+  if (req.rideId) {
+    return {
+      ok: true,
+      candidates: [],
+      hint: "Your ride is already active. Check the 'Incoming share requests' section below — other riders can still propose to join your cab."
+    };
+  }
 
-  const candidates = state.rides
-    // Show rides regardless of active/completed status.
+  // Only active rides can actually accept new passengers
+  const activeRides = state.rides.filter((r) => r.status === "active");
+
+  if (!activeRides.length) {
+    return { ok: true, candidates: [], hint: "No active rides right now. A driver must accept a ride first before you can share into it." };
+  }
+
+  const candidates = activeRides
     .map((ride) => {
       const score = sameDirectionRouteScore(req.route, ride.route);
       const availability = pickupDropAvailableOnRide(ride, req.fromCityId, req.toCityId);
@@ -278,7 +307,8 @@ export function listShareCandidates(requestId) {
         canUseDefaultPickupDrop: availability.ok
       };
     })
-    .filter((c) => c.score >= 2);
+    .filter((c) => c.score >= 1)  // at least 1 shared edge (was 2 consecutive nodes, now 1 shared edge)
+    .sort((a, b) => b.score - a.score);  // best matches first
 
   return { ok: true, candidates };
 }
@@ -292,6 +322,18 @@ export function proposeShare({ requestId, rideId, pickupCityId, dropCityId }) {
   if (!req.wantsSharing) return { ok: false, error: "Request not marked for sharing." };
   if (req.rideId) return { ok: false, error: "This request is already in a ride." };
   if (ride.status !== "active") return { ok: false, error: "You can only share into an active ride." };
+
+  // Prevent duplicate proposals from the same request to the same ride
+  const existing = ride.shareProposals.find((p) => p.requestId === requestId);
+  if (existing) {
+    if (existing.status === "pending") {
+      return { ok: false, error: "You already have a pending share request on this ride. Wait for the rider to respond." };
+    }
+    if (existing.status === "accepted") {
+      return { ok: false, error: "Your share request was already accepted for this ride." };
+    }
+    // rejected — allow re-proposing (rider might change their mind)
+  }
 
   const availability = pickupDropAvailableOnRide(ride, pickupCityId, dropCityId);
   if (!availability.ok) return { ok: false, error: availability.reason };
@@ -323,9 +365,10 @@ export function proposeShare({ requestId, rideId, pickupCityId, dropCityId }) {
 export function decideShare({ rideId, proposalId, accept }) {
   const ride = state.rides.find((r) => r.id === rideId);
   if (!ride) return { ok: false, error: "Ride not found." };
+  if (ride.status !== "active") return { ok: false, error: "Ride has already completed — share request expired." };
   const proposal = ride.shareProposals.find((p) => p.id === proposalId);
   if (!proposal) return { ok: false, error: "Proposal not found." };
-  if (proposal.status !== "pending") return { ok: false, error: "Proposal already decided." };
+  if (proposal.status !== "pending") return { ok: false, error: `Proposal already ${proposal.status}.` };
 
   if (!accept) {
     proposal.status = "rejected";
@@ -375,11 +418,76 @@ export function decideShare({ rideId, proposalId, accept }) {
 }
 
 const initialDrivers = [
-  { id: "d1", name: "Ravi", cityId: "amritsar", status: "idle" },
-  { id: "d2", name: "Priya", cityId: "ludhiana", status: "idle" },
-  { id: "d3", name: "Arjun", cityId: "bathinda", status: "idle" },
-  { id: "d4", name: "Simran", cityId: "jalandhar", status: "idle" }
+  { id: "d1", name: "Ravi",    cityId: "amritsar",  status: "idle" },
+  { id: "d2", name: "Priya",   cityId: "ludhiana",  status: "idle" },
+  { id: "d3", name: "Arjun",   cityId: "bathinda",  status: "idle" },
+  { id: "d4", name: "Simran",  cityId: "jalandhar", status: "idle" }
 ];
+
+// ── Auto-complete rides after 45–60 s ────────────────────────────────────────
+export function completeRide(rideId) {
+  const ride = state.rides.find((r) => r.id === rideId);
+  if (!ride || ride.status !== "active") return { ok: false, error: "Ride not active." };
+
+  ride.status = "completed";
+  ride.completedAt = nowIso();
+
+  // Expire all pending share proposals — ride is over, can't join anymore
+  for (const proposal of ride.shareProposals) {
+    if (proposal.status === "pending") {
+      proposal.status = "expired";
+      state.notifications.push({
+        id: id("n"),
+        type: "share_expired",
+        at: nowIso(),
+        message: `Share request from ${proposal.fromUser} expired — ride ${ride.id} has completed.`,
+        rideId: ride.id,
+        requestId: proposal.requestId
+      });
+    }
+  }
+
+  // Free the driver
+  const driver = state.drivers.find((d) => d.id === ride.driverId);
+  if (driver) {
+    driver.status = "idle";
+    driver.cityId = ride.toCityId;
+  }
+
+  // Mark all passenger requests as completed
+  for (const p of ride.passengers) {
+    const req = state.requests.find((r) => r.rideId === ride.id && r.userName === p.userName);
+    if (req) req.status = "completed";
+  }
+
+  state.notifications.push({
+    id: id("n"),
+    type: "ride_completed",
+    at: nowIso(),
+    message: `Ride ${ride.id} completed. Driver ${driver?.name ?? ride.driverId} is now idle at ${ride.toCityId}.`,
+    rideId: ride.id,
+    driverId: ride.driverId
+  });
+
+  return { ok: true, ride };
+}
+
+// Check every 5 s; complete rides that have been active for 45–60 s
+setInterval(() => {
+  const now = Date.now();
+  for (const ride of state.rides) {
+    if (ride.status !== "active") continue;
+    const req = state.requests.find((r) => r.rideId === ride.id);
+    if (!req) continue;
+    const age = now - new Date(req.createdAt).getTime();
+    // Random completion window: 45–60 s (assigned once per ride)
+    if (!ride._autoCompleteMs) {
+      ride._autoCompleteMs = 45000 + Math.random() * 15000;
+      ride.autoCompleteAt  = new Date(new Date(req.createdAt).getTime() + ride._autoCompleteMs).toISOString();
+    }
+    if (age >= ride._autoCompleteMs) completeRide(ride.id);
+  }
+}, 5000);
 
 export function resetDemoState() {
   state.drivers = initialDrivers.map((d) => ({ ...d }));
@@ -395,4 +503,3 @@ export function resetDemoState() {
   });
   return snapshot();
 }
-

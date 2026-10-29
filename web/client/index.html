@@ -1,122 +1,157 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Punjab Cab System</title>
-    <link rel="stylesheet" href="./styles.css" />
-  </head>
-  <body>
-    <div class="app">
-      <header class="topbar">
-        <div class="brand">
-          <div class="brand__title">Punjab Cab System</div>
-          <div class="brand__sub">User (left) · Map (center) · Driver (right)</div>
-        </div>
-        <div class="topbar__right">
-          <button id="refreshBtn" class="btn btn--ghost">Refresh</button>
-          <button id="resetBtn" class="btn btn--ghost">Reset demo state</button>
-          <div id="serverTime" class="muted"></div>
-        </div>
-      </header>
 
-      <main class="layout">
-        <section class="panel panel--left">
-          <div class="panel__title">User View</div>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cab System</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
 
-          <div class="card">
-            <div class="card__title">Request a ride</div>
-            <div class="grid">
-              <label class="field">
-                <span>Username</span>
-                <input id="userName" placeholder="e.g. Alice" value="Alice" />
-              </label>
-              <label class="field">
-                <span>From</span>
-                <select id="fromCity"></select>
-              </label>
-              <label class="field">
-                <span>To</span>
-                <select id="toCity"></select>
-              </label>
-              <label class="field field--inline">
-                <input id="wantsSharing" type="checkbox" />
-                <span>Enable sharing</span>
-              </label>
-              <button id="submitRide" class="btn btn--primary">Submit request</button>
-            </div>
-            <div id="userRequestResult" class="result"></div>
-          </div>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand__title">Cab System</div>
+        <div class="brand__sub">User (left) · Map (center) · Driver (right)</div>
+      </div>
+      <div class="topbar__right">
+        <button id="refreshBtn" class="btn btn--ghost">Refresh</button>
+        <button id="resetBtn" class="btn btn--ghost">Reset demo state</button>
+        <div id="serverTime" class="muted"></div>
+      </div>
+    </header>
 
-          <div class="card">
-            <div class="card__title">Sharing</div>
-            <div class="muted">
-              Select where you want to be picked up and dropped (must be on the trip route), then search rides going the same way.
-            </div>
-            <div class="grid" style="margin-top:10px">
-              <label class="field">
-                <span>Share pickup (From)</span>
-                <select id="shareFromCity"></select>
-              </label>
-              <label class="field">
-                <span>Share drop (To)</span>
-                <select id="shareToCity"></select>
-              </label>
-            </div>
-            <div class="row">
-              <button id="findShareBtn" class="btn">Find share rides</button>
-            </div>
-            <div id="shareCandidates" class="list"></div>
-          </div>
+    <main class="layout">
+      <!-- ── Left panel: User ───────────────────────────────────── -->
+      <section class="panel panel--left">
+        <div class="panel__title">User View</div>
 
-          <div class="card">
-            <div class="card__title">Incoming share requests (rider approval)</div>
-            <div class="muted">If your ride is active, you can accept/reject sharing proposals here.</div>
-            <div id="incomingShares" class="list"></div>
-          </div>
-        </section>
-
-        <section class="map">
-          <div class="map__header">
-            <div class="map__title">Punjab Cities & Roads</div>
-            <div class="map__legend">
-              <span class="dot dot--major"></span><span>Major</span>
-              <span class="dot dot--minor"></span><span>Minor</span>
-              <span class="line line--route"></span><span>Selected route</span>
-            </div>
-          </div>
-          <div class="map__canvas">
-            <svg id="mapSvg" viewBox="0 0 700 560" role="img" aria-label="Punjab city road network"></svg>
-          </div>
-          <div id="mapStatus" class="map__status muted"></div>
-        </section>
-
-        <section class="panel panel--right">
-          <div class="panel__title">Driver View</div>
-
-          <div class="card">
-            <div class="card__title">Select driver</div>
+        <div class="card">
+          <div class="card__title">Request a ride</div>
+          <div class="grid">
             <label class="field">
-              <span>Driver</span>
-              <select id="driverSelect"></select>
+              <span>Username</span>
+              <select id="userName">
+                <option value="Priya">Priya</option>
+                <option value="Gurpreet">Gurpreet</option>
+                <option value="Rajesh">Rajesh</option>
+                <option value="Sunita">Sunita</option>
+                <option value="Vikram">Vikram</option>
+              </select>
             </label>
-            <div id="driverStatus" class="muted"></div>
+            <label class="field">
+              <span>From</span>
+              <select id="fromCity"></select>
+            </label>
+            <label class="field">
+              <span>To</span>
+              <select id="toCity"></select>
+            </label>
+            <label class="field">
+              <span>Number of persons</span>
+              <select id="numPersons">
+                <option value="1">1 — just me</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4">4</option>
+                <option value="5">5</option>
+                <option value="6">6</option>
+              </select>
+            </label>
+            <label class="field field--inline">
+              <input id="wantsSharing" type="checkbox" />
+              <span>Enable sharing</span>
+            </label>
+            <button id="submitRide" class="btn btn--primary">Submit request</button>
           </div>
+          <div id="userRequestResult" class="result"></div>
+        </div>
 
-          <div class="card">
-            <div class="card__title">Requests (accept / decline)</div>
-            <div id="driverRequests" class="list"></div>
+        <div class="card">
+          <div class="card__title">Sharing</div>
+          <div class="muted">
+            Select where you want to be picked up and dropped (must be on the trip route), then search rides going the
+            same way.
           </div>
-
-          <div class="card">
-            <div class="card__title">Driver notifications</div>
-            <div id="driverNotifications" class="list"></div>
+          <div class="grid" style="margin-top:10px">
+            <label class="field">
+              <span>Share pickup (From)</span>
+              <select id="shareFromCity"></select>
+            </label>
+            <label class="field">
+              <span>Share drop (To)</span>
+              <select id="shareToCity"></select>
+            </label>
           </div>
-        </section>
-      </main>
-    </div>
+          <div class="row">
+            <button id="findShareBtn" class="btn">Find share rides</button>
+          </div>
+          <div id="shareCandidates" class="list"></div>
+        </div>
 
-    <script type="module" src="./app.js"></script>
-  </body>
+        <div class="card">
+          <div class="card__title">Incoming share requests (rider approval)</div>
+          <div class="muted">If your ride is active, you can accept/reject sharing proposals here.</div>
+          <div id="incomingShares" class="list"></div>
+        </div>
+      </section>
+
+      <!-- ── Center: Map + Queues ───────────────────────────────── -->
+      <section class="map">
+        <div class="map__header">
+          <div class="map__title">Punjab Cities &amp; Roads</div>
+          <div class="map__legend">
+            <span class="dot dot--major"></span><span>Major</span>
+            <span class="dot dot--minor"></span><span>Minor</span>
+            <span class="line line--route"></span><span>Selected route</span>
+          </div>
+        </div>
+        <div class="map__canvas">
+          <svg id="mapSvg" viewBox="0 0 700 560" role="img" aria-label="Punjab city road network"></svg>
+        </div>
+        <div id="mapStatus" class="map__status muted"></div>
+
+        <!-- Two queues below the map -->
+        <div class="queues">
+          <div class="queue-panel">
+            <div class="queue-panel__title">🕐 Pending Request Queue</div>
+            <div id="pendingQueue" class="queue-list"></div>
+          </div>
+          <div class="queue-panel">
+            <div class="queue-panel__title">🚕 Active Rides Queue</div>
+            <div id="activeQueue" class="queue-list"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Right panel: Driver ────────────────────────────────── -->
+      <section class="panel panel--right">
+        <div class="panel__title">Driver View</div>
+
+        <div class="card">
+          <div class="card__title">Select driver</div>
+          <label class="field">
+            <span>Driver</span>
+            <select id="driverSelect"></select>
+          </label>
+          <div id="driverStatus" class="muted"></div>
+        </div>
+
+        <div class="card">
+          <div class="card__title">Requests (accept / decline)</div>
+          <div id="driverRequests" class="list"></div>
+        </div>
+
+        <div class="card">
+          <div class="card__title">Driver notifications</div>
+          <div id="driverNotifications" class="list"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script type="module" src="./app.js"></script>
+</body>
+
 </html>
-

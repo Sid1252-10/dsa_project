@@ -241,9 +241,9 @@ function drawMap() {
   updateCityLabelVisibility();
 
   if (selectedRoute?.path?.length) {
-    $("mapStatus").textContent = `Selected route: ${routeText(selectedRoute)} (distance: ${selectedRoute.distance})`;
+    $("mapStatus").textContent = `Route: ${routeText(selectedRoute)} (${selectedRoute.distance} km)`;
   } else {
-    $("mapStatus").textContent = "Select From/To and submit a request to see the route.";
+    $("mapStatus").textContent = "Click \"Show path\" on a request to highlight the route.";
   }
 }
 
@@ -332,7 +332,7 @@ function renderDriverView() {
       el.innerHTML = `
         <div class="item__title">${r.userName}: ${cityName(r.fromCityId)} → ${cityName(r.toCityId)}</div>
         <div class="item__sub">Route: ${routeText(r.route)} (distance: ${r.route.distance})</div>
-        <div class="item__sub">Solo fare: ₹${r.soloFare}${r.wantsSharing ? " · sharing enabled" : ""}</div>
+        <div class="item__sub">Persons: <b>${r.numPersons ?? 1}</b> &nbsp;|&nbsp; Fare: \u20b9${r.soloFare}${r.wantsSharing ? " · sharing enabled" : ""}</div>
         <div class="item__actions">
           <button class="btn btn--ok" data-act="accept" data-req="${r.id}">Accept</button>
           <button class="btn btn--danger" data-act="decline" data-req="${r.id}">Decline</button>
@@ -384,11 +384,91 @@ function renderShareCandidates() {
   // no-op placeholder (populated by findShareBtn)
 }
 
+function renderQueues() {
+  const pending = $("pendingQueue");
+  const active  = $("activeQueue");
+  pending.innerHTML = "";
+  active.innerHTML  = "";
+
+  // Pending Request Queue — FIFO order (earliest first)
+  const pendingReqs = (appState?.requests ?? []).filter((r) => r.status === "pending_driver");
+  if (!pendingReqs.length) {
+    pending.innerHTML = `<div class="muted" style="font-size:12px;padding:4px">No pending requests.</div>`;
+  } else {
+    for (const r of pendingReqs) {
+      const el = document.createElement("div");
+      el.className = "queue-item";
+      el.style.cursor = "pointer";
+      el.title = "Click to show route on map";
+      el.innerHTML = `
+        <span class="queue-item__id">${r.id}</span>
+        <span class="queue-item__route">${r.userName}: ${cityName(r.fromCityId)} → ${cityName(r.toCityId)}</span>
+        <span class="queue-item__badge badge--pending">waiting</span>
+      `;
+      el.addEventListener("click", () => {
+        selectedRoute = (selectedRoute === r.route) ? null : r.route;
+        drawMap();
+      });
+      pending.appendChild(el);
+    }
+  }
+
+  // Active Rides Queue — with live countdown
+  const activeRides = (appState?.rides ?? []).filter((r) => r.status === "active");
+  if (!activeRides.length) {
+    active.innerHTML = `<div class="muted" style="font-size:12px;padding:4px">No active rides.</div>`;
+  } else {
+    for (const r of activeRides) {
+      const passCount = r.passengers?.length ?? 1;
+      const el = document.createElement("div");
+      el.className = "queue-item";
+      el.style.cursor = "pointer";
+      el.title = "Click to show route on map";
+      const countdownId = `cd-${r.id}`;
+      el.innerHTML = `
+        <span class="queue-item__id">${r.id}</span>
+        <span class="queue-item__route">${r.driverName}: ${cityName(r.fromCityId)} → ${cityName(r.toCityId)}${passCount > 1 ? ` (×${passCount})` : ""}</span>
+        <span class="queue-item__badge badge--active" id="${countdownId}">active</span>
+      `;
+      el.addEventListener("click", () => {
+        selectedRoute = (selectedRoute === r.route) ? null : r.route;
+        drawMap();
+      });
+      // Store the autoCompleteAt on the element for the countdown timer
+      if (r.autoCompleteAt) el.dataset.completeAt = r.autoCompleteAt;
+      active.appendChild(el);
+    }
+  }
+}
+
+// Update countdown badges every second (no server fetch needed)
+function tickCountdowns() {
+  const now = Date.now();
+  document.querySelectorAll("#activeQueue .queue-item").forEach((el) => {
+    const completeAt = el.dataset.completeAt;
+    if (!completeAt) return;
+    const badge = el.querySelector(".queue-item__badge");
+    if (!badge) return;
+    const remaining = Math.max(0, Math.round((new Date(completeAt).getTime() - now) / 1000));
+    badge.textContent = remaining > 0 ? `⏱ ${remaining}s` : "completing...";
+    badge.style.background = remaining <= 10
+      ? "rgba(255,91,122,.18)"  // red tint when nearly done
+      : "rgba(71,209,140,.14)";
+    badge.style.color = remaining <= 10 ? "#ff5b7a" : "var(--ok)";
+  });
+}
+
 function renderTopbar() {
   $("serverTime").textContent = appState?.serverTime ? `Server: ${appState.serverTime}` : "";
 }
 
 async function refreshAll() {
+  const prevFromCity = $("fromCity").value;
+  const prevToCity = $("toCity").value;
+  // Remember current share city selections so refreshAll doesn't reset them
+  const prevShareFrom = $("shareFromCity").value;
+  const prevShareTo   = $("shareToCity").value;
+
   graph = await apiGet("/api/graph");
   appState = await apiGet("/api/state");
 
@@ -396,9 +476,17 @@ async function refreshAll() {
   setOptions($("toCity"), graph.cities);
   setOptions($("shareFromCity"), graph.cities);
   setOptions($("shareToCity"), graph.cities);
+
+  if (prevFromCity) $("fromCity").value = prevFromCity;
+  if (prevToCity) $("toCity").value = prevToCity;
+  // Restore share city selections if they were set
+  if (prevShareFrom) $("shareFromCity").value = prevShareFrom;
+  if (prevShareTo)   $("shareToCity").value   = prevShareTo;
+
   renderDriverSelect();
   renderTopbar();
   drawMap();
+  renderQueues();
   renderDriverView();
   renderIncomingShares($("userName").value.trim());
 }
@@ -465,10 +553,11 @@ function wireEvents() {
   $("driverSelect").addEventListener("change", renderDriverView);
 
   $("submitRide").addEventListener("click", async () => {
-    const userName = $("userName").value.trim();
+    const userName   = $("userName").value.trim();
     const fromCityId = $("fromCity").value;
-    const toCityId = $("toCity").value;
+    const toCityId   = $("toCity").value;
     const wantsSharing = $("wantsSharing").checked;
+    const numPersons   = parseInt($("numPersons").value, 10) || 1;
     if (!userName) {
       alert("Enter a username.");
       return;
@@ -478,18 +567,19 @@ function wireEvents() {
       return;
     }
     try {
-      const res = await apiPost("/api/request", { userName, fromCityId, toCityId, wantsSharing });
+      const res = await apiPost("/api/request", { userName, fromCityId, toCityId, wantsSharing, numPersons });
       const req = res.request;
       lastRequestId = req.id;
-      selectedRoute = req.route;
+      selectedRoute = null;   // don't auto-highlight — use "Show path" button instead
       $("userRequestResult").innerHTML = `
         <div class="pill">Request: <b>${req.id}</b></div>
+        <div class="pill">Persons: <b>${req.numPersons ?? numPersons}</b></div>
         <div class="pill">Assigned driver: <b>${req.assignedDriverId ?? "any"}</b></div>
-        <div class="pill">Solo fare: <b>₹${req.soloFare}</b></div>
-        <div class="muted" style="margin-top:8px">Route: ${routeText(req.route)} (distance: ${req.route.distance})</div>
+        <div class="pill">Fare: <b>\u20b9${req.soloFare}</b></div>
+        <div class="muted" style="margin-top:8px">Route: ${routeText(req.route)} (${req.route.distance} km)</div>
       `;
       $("shareFromCity").value = fromCityId;
-      $("shareToCity").value = toCityId;
+      $("shareToCity").value   = toCityId;
       await refreshAll();
     } catch (err) {
       $("userRequestResult").textContent = err.message;
@@ -510,7 +600,9 @@ function wireEvents() {
     try {
       const res = await apiGet(`/api/share/candidates?requestId=${encodeURIComponent(lastRequestId)}`);
       if (!res.candidates.length) {
-        container.innerHTML = `<div class="muted">No rides found going the same way right now.</div>`;
+        // Show a helpful hint if the server sent one
+        const hint = res.hint || "No rides found going the same way right now.";
+        container.innerHTML = `<div class="muted">${hint}</div>`;
         return;
       }
       for (const c of res.candidates) {
@@ -521,13 +613,21 @@ function wireEvents() {
     }
   });
 
-  $("userName").addEventListener("input", () => renderIncomingShares($("userName").value.trim()));
+  $("userName").addEventListener("change", () => renderIncomingShares($("userName").value.trim()));
 }
 
 async function main() {
   wireEvents();
   await initMap();
   await refreshAll();
+
+  // Live countdown ticker — updates every second, no server call
+  setInterval(tickCountdowns, 1000);
+
+  // Auto-poll server every 4 s so ride completions appear without manual refresh
+  setInterval(async () => {
+    try { await refreshAll(); } catch (_) { /* ignore network blip */ }
+  }, 4000);
 }
 
 main().catch((e) => {

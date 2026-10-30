@@ -5,14 +5,59 @@
 
 const $ = (id) => document.getElementById(id);
 
-// ── Application State ─────────────────────────────────────
+// ── State ─────────────────────────────────────────────────
 let graph            = null;
 let appState         = null;
 let selectedRoute    = null;
 let lastRequestId    = null;
-let currentScreen    = 'passenger';
+let currentScreen    = null;
 let autoRefreshTimer = null;
 let selectedVehicle  = 'sedan';
+// Mapbox Configuration
+const MAPBOX_TOKEN = "pk.eyJ1Ijoic2lkMTI1MiIsImEiOiJjbXZ1bXVldXMwN3h6Mnlxc25sZGVvdDJ2In0.hA6AyBIRBka2l0hXFkiVzg";
+
+const CITY_COORDS = {
+  "amritsar": [74.8723, 31.6340],
+  "tarn_taran": [74.7500, 31.4800],
+  "gurdaspur": [75.4000, 32.0300],
+  "pathankot": [75.6400, 32.2700],
+  "hoshiarpur": [75.9800, 32.0400],
+  "kapurthala": [75.1500, 31.4200],
+  "jalandhar": [75.5800, 31.3300],
+  "ludhiana": [75.8600, 30.9000],
+  "moga": [75.6500, 30.5500],
+  "firozpur": [74.6300, 30.9100],
+  "fazilka": [74.2200, 30.5400],
+  "abohar": [74.3500, 30.3500],
+  "bathinda": [74.9400, 30.2100],
+  "faridkot": [75.1500, 30.3500],
+  "muktsar": [74.6500, 30.3500],
+  "mansa": [75.1500, 29.8500],
+  "barnala": [75.7500, 30.3500],
+  "sangrur": [75.8500, 30.2500],
+  "patiala": [76.3800, 30.3300],
+  "malerkotla": [76.4500, 30.5000],
+  "rupnagar": [76.3500, 30.5400],
+  "mohali": [76.7200, 30.7000],
+  "chandigarh": [76.7800, 30.7300],
+};
+
+let graph = null;
+let appState = null;
+let selectedRoute = null;
+let lastRequestId = null;
+let map = null;
+let markers = [];
+
+function updateCityLabelVisibility() {
+  if (!map) return;
+  const zoom = map.getZoom();
+  for (const marker of markers) {
+    const element = marker.getElement();
+    const threshold = element.dataset.kind === "major" ? 6 : 8;
+    element.classList.toggle("city-marker--labeled", zoom >= threshold);
+  }
+}
 
 // ── Vehicle configuration ─────────────────────────────────
 const VEHICLE_CONFIG = {
@@ -154,77 +199,7 @@ function notifIcon(type) {
   return map[type] ?? '📣';
 }
 
-function escapeRegex(str) {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function escapeHtml(str) {
-  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-// ── Client-Side Dijkstra Route Calculation ────────────────
-function findShortestPath(fromId, toId) {
-  if (!graph?.cities || !graph?.roads) return null;
-  const byId = new Map(graph.cities.map(c => [c.id, c]));
-  if (!byId.has(fromId) || !byId.has(toId)) return null;
-  if (fromId === toId) return { path: [fromId], distance: 0 };
-
-  const adj = new Map(graph.cities.map(c => [c.id, []]));
-  for (const road of graph.roads) {
-    const [a, b, kmDist] = road;
-    if (!byId.has(a) || !byId.has(b)) continue;
-    const w = typeof kmDist === 'number' && kmDist > 0 ? kmDist : 30;
-    adj.get(a).push({ to: b, w });
-    adj.get(b).push({ to: a, w });
-  }
-
-  const dist = new Map();
-  const prev = new Map();
-  const visited = new Set();
-  for (const id of byId.keys()) dist.set(id, Infinity);
-  dist.set(fromId, 0);
-
-  while (visited.size < byId.size) {
-    let u = null;
-    let best = Infinity;
-    for (const [id, d] of dist.entries()) {
-      if (visited.has(id)) continue;
-      if (d < best) {
-        best = d;
-        u = id;
-      }
-    }
-    if (u === null || u === toId) break;
-    visited.add(u);
-
-    for (const { to, w } of adj.get(u) || []) {
-      if (visited.has(to)) continue;
-      const alt = dist.get(u) + w;
-      if (alt < dist.get(to)) {
-        dist.set(to, alt);
-        prev.set(to, u);
-      }
-    }
-  }
-
-  const d = dist.get(toId);
-  if (!Number.isFinite(d) || d === Infinity) return null;
-
-  const path = [];
-  let cur = toId;
-  while (cur) {
-    path.push(cur);
-    cur = prev.get(cur);
-    if (cur === fromId) {
-      path.push(fromId);
-      break;
-    }
-  }
-  path.reverse();
-  return { path, distance: d };
-}
-
-// ── Screen Navigation ─────────────────────────────────────
+// ── Screen navigation ─────────────────────────────────────
 function showScreen(name) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   const el = $(`screen-${name}`);
@@ -234,7 +209,7 @@ function showScreen(name) {
   if (name !== 'role') {
     if (!autoRefreshTimer) {
       autoRefreshTimer = setInterval(async () => {
-        try { await refreshAll(); } catch (_) {}
+        try { await refreshAll(); } catch (_) { /* ignore network blips */ }
       }, 4000);
     }
     refreshAll().catch(console.error);
@@ -509,108 +484,164 @@ function onRouteEndpointsChanged() {
   drawMap('mapSvg', 'mapStatus');
 }
 
-// ── SVG Map Drawing (Native, Clean, Reliable) ──────────────
-function svgEl(name) {
-  return document.createElementNS('http://www.w3.org/2000/svg', name);
+async function initMap() {
+  if (!MAPBOX_TOKEN) {
+    $("mapStatus").textContent = "Mapbox token is missing. Add a public token to web/client/app.js.";
+    return;
+  }
+  if (!window.mapboxgl) {
+    $("mapStatus").textContent = "Mapbox GL JS failed to load. Please check your internet connection.";
+    return;
+  }
+
+  try {
+    mapboxgl.accessToken = MAPBOX_TOKEN;
+    map = new mapboxgl.Map({
+      container: "mapContainer",
+      style: "mapbox://styles/mapbox/streets-v12",
+      center: [75.3, 31.1],
+      zoom: 7,
+    });
+
+    await new Promise((resolve, reject) => {
+      map.once("load", resolve);
+      map.once("error", (event) => reject(event.error || new Error("Mapbox map failed to load.")));
+    });
+    const coordinates = Object.values(CITY_COORDS);
+    const bounds = coordinates.reduce(
+      (result, [lng, lat]) => result.extend([lng, lat]),
+      new mapboxgl.LngLatBounds(coordinates[0], coordinates[0])
+    );
+    map.fitBounds(bounds, { padding: 36, maxZoom: 7 });
+    map.on("error", (event) => {
+      console.error("Mapbox map error:", event.error || event);
+      $("mapStatus").textContent = "Mapbox could not load map data. Check the token, allowed URLs, and network.";
+    });
+    map.on("zoom", updateCityLabelVisibility);
+  } catch (err) {
+    console.error("Mapbox init error:", err);
+    $("mapStatus").textContent = "Failed to initialize Mapbox map. Please check the token or network.";
+  }
 }
 
-function drawMap(svgId = 'mapSvg', statusId = 'mapStatus') {
-  const svg = $(svgId);
-  if (!svg || !graph?.cities) return;
-  svg.innerHTML = '';
+function drawMap() {
+  if (!map || !graph) return;
+
+  // Clear markers
+  markers.forEach((m) => m.remove());
+  markers = [];
+
+  // Clear existing road/route sources
+  if (map.getSource("roads")) {
+    if (map.getLayer("roads-layer")) map.removeLayer("roads-layer");
+    map.removeSource("roads");
+  }
+  if (map.getSource("selected-route")) {
+    if (map.getLayer("route-layer")) map.removeLayer("route-layer");
+    map.removeSource("selected-route");
+  }
 
   const byId = new Map(graph.cities.map((c) => [c.id, c]));
 
-  // 1. Draw All Roads
-  for (const road of graph.roads) {
-    const [a, b] = road;
-    const ca = byId.get(a), cb = byId.get(b);
-    if (!ca || !cb) continue;
-
-    const line = svgEl('line');
-    line.setAttribute('x1', ca.x);
-    line.setAttribute('y1', ca.y);
-    line.setAttribute('x2', cb.x);
-    line.setAttribute('y2', cb.y);
-    line.setAttribute('class', 'road');
-    line.dataset.a = a;
-    line.dataset.b = b;
-    svg.appendChild(line);
+  // 1. All Roads
+  const roadsFeatures = [];
+  for (const [a, b] of graph.roads) {
+    const coordA = CITY_COORDS[a];
+    const coordB = CITY_COORDS[b];
+    if (!coordA || !coordB) continue;
+    roadsFeatures.push({
+      type: "Feature",
+      geometry: {
+        type: "LineString",
+        coordinates: [coordA, coordB],
+      },
+    });
   }
 
-  // 2. Draw Highlighted Selected Route
+  map.addSource("roads", {
+    type: "geojson",
+    data: {
+      type: "FeatureCollection",
+      features: roadsFeatures,
+    },
+  });
+
+  map.addLayer({
+    id: "roads-layer",
+    type: "line",
+    source: "roads",
+    paint: {
+      "line-color": "rgba(255,255,255,0.2)",
+      "line-width": 2,
+    },
+  });
+
+  // 2. Selected Route Highlight
   if (selectedRoute?.path?.length >= 2) {
     for (let i = 0; i < selectedRoute.path.length - 1; i++) {
-      const ca = byId.get(selectedRoute.path[i]);
-      const cb = byId.get(selectedRoute.path[i + 1]);
-      if (!ca || !cb) continue;
-
-      const line = svgEl('line');
-      line.setAttribute('x1', ca.x);
-      line.setAttribute('y1', ca.y);
-      line.setAttribute('x2', cb.x);
-      line.setAttribute('y2', cb.y);
-      line.setAttribute('class', 'road road--highlight');
-      svg.appendChild(line);
+      const a = selectedRoute.path[i];
+      const b = selectedRoute.path[i + 1];
+      const coordA = CITY_COORDS[a];
+      const coordB = CITY_COORDS[b];
+      if (!coordA || !coordB) continue;
+      routeFeatures.push({
+        type: "Feature",
+        geometry: {
+          type: "LineString",
+          coordinates: [coordA, coordB],
+        },
+      });
     }
-  }
 
-  // 3. Draw Cities & Interactive Pins
-  const fromId = $('fromCity')?.value;
-  const toId   = $('toCity')?.value;
-
-  for (const c of graph.cities) {
-    const g = svgEl('g');
-    g.style.cursor = 'pointer';
-
-    const isPickup = c.id === fromId;
-    const isDrop   = c.id === toId;
-
-    const circle = svgEl('circle');
-    circle.setAttribute('cx', c.x);
-    circle.setAttribute('cy', c.y);
-
-    if (isPickup) {
-      circle.setAttribute('r', 11);
-      circle.setAttribute('fill', '#12B76A');
-      circle.setAttribute('stroke', '#FFFFFF');
-      circle.setAttribute('stroke-width', '2.5');
-    } else if (isDrop) {
-      circle.setAttribute('r', 11);
-      circle.setAttribute('fill', '#EF4444');
-      circle.setAttribute('stroke', '#FFFFFF');
-      circle.setAttribute('stroke-width', '2.5');
-    } else {
-      circle.setAttribute('r', c.kind === 'major' ? 7 : 5);
-      circle.setAttribute('class', c.kind === 'major' ? 'city-major' : 'city-minor');
-    }
-    g.appendChild(circle);
-
-    const label = svgEl('text');
-    label.setAttribute('x', c.x + 10);
-    label.setAttribute('y', c.y + 4);
-    label.setAttribute('class', 'city-label');
-    if (isPickup) {
-      label.textContent = `📍 ${c.name} (Pickup)`;
-      label.setAttribute('font-weight', 'bold');
-      label.setAttribute('fill', '#12B76A');
-    } else if (isDrop) {
-      label.textContent = `🏁 ${c.name} (Drop)`;
-      label.setAttribute('font-weight', 'bold');
-      label.setAttribute('fill', '#EF4444');
-    } else {
-      label.textContent = c.name + (c.kind === 'major' ? ' ★' : '');
-    }
-    g.appendChild(label);
-
-    // Clicking city directly selects it!
-    g.addEventListener('click', (e) => {
-      e.stopPropagation();
-      onMapCityClicked(c.id, c.name);
+    map.addSource("selected-route", {
+      type: "geojson",
+      data: {
+        type: "FeatureCollection",
+        features: routeFeatures,
+      },
     });
 
-    svg.appendChild(g);
+    map.addLayer({
+      id: "route-layer",
+      type: "line",
+      source: "selected-route",
+      paint: {
+        "line-color": "#47d18c",
+        "line-width": 5,
+      },
+    });
   }
+
+  // 3. Cities as Markers
+  for (const c of graph.cities) {
+    const coord = CITY_COORDS[c.id];
+    if (!coord) continue;
+
+    const el = document.createElement("div");
+    el.className = `city-marker city-marker--${c.kind}`;
+    el.dataset.kind = c.kind;
+    el.style.width = c.kind === "major" ? "12px" : "8px";
+    el.style.height = c.kind === "major" ? "12px" : "8px";
+    el.style.borderRadius = "50%";
+    el.style.backgroundColor = c.kind === "major" ? "#5b8cff" : "#91a6ff";
+    el.style.border = "1px solid white";
+    el.style.boxShadow = "0 0 4px rgba(0,0,0,0.5)";
+    el.style.cursor = "pointer";
+
+    const label = document.createElement("span");
+    label.className = "city-marker__label";
+    label.textContent = c.name;
+    el.appendChild(label);
+
+    const popup = new mapboxgl.Popup({ offset: 25 }).setHTML(`<b>${c.name}</b>`);
+    const marker = new mapboxgl.Marker(el)
+      .setPopup(popup)
+      .setLngLat(coord)
+      .addTo(map);
+
+    markers.push(marker);
+  }
+  updateCityLabelVisibility();
 
   const statusEl = $(statusId);
   if (statusEl && !selectedRoute?.path?.length) {
@@ -1270,10 +1301,27 @@ function wireEvents() {
       fromInput.value = toInput.value;
       toInput.value   = tempText;
     }
-    if (fromSelect && toSelect) {
-      const tempVal = fromSelect.value;
-      fromSelect.value = toSelect.value;
-      toSelect.value   = tempVal;
+    if (fromCityId === toCityId) {
+      alert("From and To cannot be the same city.");
+      return;
+    }
+    try {
+      const res = await apiPost("/api/request", { userName, fromCityId, toCityId, wantsSharing, numPersons });
+      const req = res.request;
+      lastRequestId = req.id;
+      selectedRoute = null;   // don't auto-highlight — use "Show path" button instead
+      $("userRequestResult").innerHTML = `
+        <div class="pill">Request: <b>${req.id}</b></div>
+        <div class="pill">Persons: <b>${req.numPersons ?? numPersons}</b></div>
+        <div class="pill">Assigned driver: <b>${req.assignedDriverId ?? "any"}</b></div>
+        <div class="pill">Fare: <b>\u20b9${req.soloFare}</b></div>
+        <div class="muted" style="margin-top:8px">Route: ${routeText(req.route)} (${req.route.distance} km)</div>
+      `;
+      $("shareFromCity").value = fromCityId;
+      $("shareToCity").value   = toCityId;
+      await refreshAll();
+    } catch (err) {
+      $("userRequestResult").textContent = err.message;
     }
     onRouteEndpointsChanged();
   });
@@ -1367,9 +1415,7 @@ function checkSessionAndRole() {
 
 async function main() {
   wireEvents();
-  checkSessionAndRole();
-
-  // Initial data load
+  await initMap();
   await refreshAll();
 
   // Set default vehicle or URL vehicle

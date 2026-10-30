@@ -15,20 +15,45 @@ Write-Host "   🚖 Cab Allocation System Startup Script (PowerShell)" -Foregrou
 Write-Host "=======================================================" -ForegroundColor Cyan
 
 # 1. Detect Python
-$pythonCmd = "python"
-try {
-    $pyVer = & python --version 2>&1
-    Write-Host "[1/4] Using Python: $pyVer" -ForegroundColor Green
-} catch {
+$pythonCmd = $null
+$pyVer = $null
+
+foreach ($cmd in @("python", "py", "python3")) {
+    try {
+        if ($cmd -eq "py") {
+            $ver = & py -3 --version 2>&1
+            if ($LASTEXITCODE -eq 0 -or $ver -match "Python") {
+                $pythonCmd = "py -3"
+                $pyVer = $ver
+                break
+            }
+        } else {
+            $ver = & $cmd --version 2>&1
+            if ($LASTEXITCODE -eq 0 -or $ver -match "Python") {
+                $pythonCmd = $cmd
+                $pyVer = $ver
+                break
+            }
+        }
+    } catch {}
+}
+
+if (-not $pythonCmd) {
     Write-Host "[ERROR] Python is not installed or not found in PATH." -ForegroundColor Red
     exit 1
 }
+
+Write-Host "[1/4] Using Python: $pyVer" -ForegroundColor Green
 
 # 2. Setup virtual environment
 $venvPath = Join-Path $PSScriptRoot "venv"
 if (-not (Test-Path $venvPath)) {
     Write-Host "[2/4] Creating virtual environment in 'venv'..." -ForegroundColor Yellow
-    & python -m venv venv
+    if ($pythonCmd -eq "py -3") {
+        & py -3 -m venv venv
+    } else {
+        & $pythonCmd -m venv venv
+    }
 } else {
     Write-Host "[2/4] Virtual environment found in 'venv'." -ForegroundColor Green
 }

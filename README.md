@@ -21,9 +21,9 @@ chmod +x start.sh   # (first time only)
 This script automatically:
 1. Creates a Python virtual environment (`venv`).
 2. Installs all dependencies from `requirements.txt`.
-3. Starts the Web UI server (frontend + map API at `http://localhost:5174`) in the background.
-4. Opens the browser and launches the interactive CLI simulator in the foreground.
-5. Cleanly stops the background server when you exit.
+3. Starts the Web UI and API server at `http://localhost:5174` in the background.
+4. Opens the passenger dashboard (including the live map) and launches the interactive CLI simulator.
+5. Stops the background web server when you exit the CLI.
 
 ### Backend Only (Python):
 ```bash

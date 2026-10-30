@@ -1,6 +1,6 @@
 // ═══════════════════════════════════════════════════════════
 // CabSystem — Complete Client App Logic
-// Native SVG Map + Smart Auto-Recommend City Search + Full DSA Flow
+// Interactive Mapbox Map + Smart City Search + Full DSA Flow
 // ═══════════════════════════════════════════════════════════
 
 const $ = (id) => document.getElementById(id);
@@ -42,17 +42,14 @@ const CITY_COORDS = {
   "chandigarh": [76.7800, 30.7300],
 };
 
-let graph = null;
-let appState = null;
-let selectedRoute = null;
-let lastRequestId = null;
-let map = null;
-let markers = [];
+const maps = { passenger: null, driver: null };
+const mapMarkers = { passenger: [], driver: [] };
 
-function updateCityLabelVisibility() {
+function updateCityLabelVisibility(role) {
+  const map = maps[role];
   if (!map) return;
   const zoom = map.getZoom();
-  for (const marker of markers) {
+  for (const marker of mapMarkers[role]) {
     const element = marker.getElement();
     const threshold = element.dataset.kind === "major" ? 6 : 8;
     element.classList.toggle("city-marker--labeled", zoom >= threshold);
@@ -163,6 +160,59 @@ function routeText(route) {
   return route.path.map(cityName).join(' → ');
 }
 
+function findShortestPath(fromId, toId) {
+  if (!graph?.cities?.length || !fromId || !toId) return null;
+  if (fromId === toId) return { path: [fromId], distance: 0 };
+
+  const byId = new Map(graph.cities.map(city => [city.id, city]));
+  const distances = new Map(graph.cities.map(city => [city.id, Infinity]));
+  const previous = new Map();
+  const visited = new Set();
+  if (!byId.has(fromId) || !byId.has(toId)) return null;
+  distances.set(fromId, 0);
+
+  while (visited.size < graph.cities.length) {
+    let current = null;
+    let best = Infinity;
+    for (const [cityId, distance] of distances) {
+      if (!visited.has(cityId) && distance < best) {
+        current = cityId;
+        best = distance;
+      }
+    }
+    if (current === null || current === toId) break;
+    visited.add(current);
+
+    for (const edge of graph.roads) {
+      const [a, b, explicitWeight] = edge;
+      let neighbor = null;
+      if (a === current) neighbor = b;
+      else if (b === current) neighbor = a;
+      if (!neighbor || visited.has(neighbor)) continue;
+      const cityA = byId.get(a);
+      const cityB = byId.get(b);
+      if (!cityA || !cityB) continue;
+      const weight = Number.isFinite(explicitWeight) && explicitWeight > 0
+        ? explicitWeight
+        : Math.max(1, Math.round(Math.hypot(cityA.x - cityB.x, cityA.y - cityB.y) / 20));
+      const candidate = distances.get(current) + weight;
+      if (candidate < distances.get(neighbor)) {
+        distances.set(neighbor, candidate);
+        previous.set(neighbor, current);
+      }
+    }
+  }
+
+  const distance = distances.get(toId);
+  if (!Number.isFinite(distance)) return null;
+  const path = [];
+  for (let cityId = toId; cityId; cityId = previous.get(cityId)) {
+    path.unshift(cityId);
+    if (cityId === fromId) break;
+  }
+  return path[0] === fromId ? { path, distance } : null;
+}
+
 function formatTime(iso) {
   if (!iso) return '';
   return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -205,6 +255,14 @@ function showScreen(name) {
   const el = $(`screen-${name}`);
   if (el) el.classList.add('active');
   currentScreen = name;
+
+  if (name === 'passenger' || name === 'driver') {
+    requestAnimationFrame(async () => {
+      await initMap(name);
+      maps[name]?.resize();
+      drawMap(name === 'passenger' ? 'mapSvg' : 'mapSvg2', name === 'passenger' ? 'mapStatus' : 'mapStatus2');
+    });
+  }
 
   if (name !== 'role') {
     if (!autoRefreshTimer) {
@@ -484,168 +542,113 @@ function onRouteEndpointsChanged() {
   drawMap('mapSvg', 'mapStatus');
 }
 
-async function initMap() {
-  if (!MAPBOX_TOKEN) {
-    $("mapStatus").textContent = "Mapbox token is missing. Add a public token to web/client/app.js.";
-    return;
-  }
-  if (!window.mapboxgl) {
-    $("mapStatus").textContent = "Mapbox GL JS failed to load. Please check your internet connection.";
-    return;
+async function initMap(role = currentScreen) {
+  if (!['passenger', 'driver'].includes(role) || maps[role]) return maps[role];
+
+  const config = role === 'passenger'
+    ? { containerId: 'mapContainer', statusId: 'mapStatus', svgId: 'mapSvg' }
+    : { containerId: 'mapContainer2', statusId: 'mapStatus2', svgId: 'mapSvg2' };
+  const status = $(config.statusId);
+  const container = $(config.containerId);
+  if (!container) return null;
+  if (!MAPBOX_TOKEN || !window.mapboxgl) {
+    if (status) status.textContent = !MAPBOX_TOKEN
+      ? 'Mapbox token is missing. Add a public token to web/client/app.js.'
+      : 'Mapbox GL JS failed to load. Check your internet connection.';
+    return null;
   }
 
   try {
     mapboxgl.accessToken = MAPBOX_TOKEN;
-    map = new mapboxgl.Map({
-      container: "mapContainer",
-      style: "mapbox://styles/mapbox/streets-v12",
+    const map = new mapboxgl.Map({
+      container,
+      style: 'mapbox://styles/mapbox/streets-v12',
       center: [75.3, 31.1],
-      zoom: 7,
+      zoom: 6,
     });
+    maps[role] = map;
 
     await new Promise((resolve, reject) => {
-      map.once("load", resolve);
-      map.once("error", (event) => reject(event.error || new Error("Mapbox map failed to load.")));
+      map.once('load', resolve);
+      map.once('error', (event) => reject(event.error || new Error('Mapbox map failed to load.')));
     });
+
     const coordinates = Object.values(CITY_COORDS);
     const bounds = coordinates.reduce(
-      (result, [lng, lat]) => result.extend([lng, lat]),
+      (result, point) => result.extend(point),
       new mapboxgl.LngLatBounds(coordinates[0], coordinates[0])
     );
     map.fitBounds(bounds, { padding: 36, maxZoom: 7 });
-    map.on("error", (event) => {
-      console.error("Mapbox map error:", event.error || event);
-      $("mapStatus").textContent = "Mapbox could not load map data. Check the token, allowed URLs, and network.";
+    map.on('error', (event) => {
+      console.error('Mapbox map error:', event.error || event);
+      if (status) status.textContent = 'Mapbox could not load map data. Check the token, allowed URLs, and network.';
     });
-    map.on("zoom", updateCityLabelVisibility);
+    map.on('zoom', () => updateCityLabelVisibility(role));
+    drawMap(config.svgId, config.statusId);
+    return map;
   } catch (err) {
-    console.error("Mapbox init error:", err);
-    $("mapStatus").textContent = "Failed to initialize Mapbox map. Please check the token or network.";
+    maps[role] = null;
+    console.error('Mapbox init error:', err);
+    if (status) status.textContent = 'Failed to initialize Mapbox. Check the token or network.';
+    return null;
   }
 }
 
-function drawMap() {
-  if (!map || !graph) return;
+function drawMap(mapTargetId = 'mapSvg', statusId = 'mapStatus') {
+  const role = mapTargetId === 'mapSvg2' || mapTargetId === 'mapContainer2' ? 'driver' : 'passenger';
+  const map = maps[role];
+  if (!map || !graph || !map.isStyleLoaded()) return;
 
-  // Clear markers
-  markers.forEach((m) => m.remove());
-  markers = [];
-
-  // Clear existing road/route sources
-  if (map.getSource("roads")) {
-    if (map.getLayer("roads-layer")) map.removeLayer("roads-layer");
-    map.removeSource("roads");
-  }
-  if (map.getSource("selected-route")) {
-    if (map.getLayer("route-layer")) map.removeLayer("route-layer");
-    map.removeSource("selected-route");
-  }
-
-  const byId = new Map(graph.cities.map((c) => [c.id, c]));
-
-  // 1. All Roads
-  const roadsFeatures = [];
-  for (const [a, b] of graph.roads) {
-    const coordA = CITY_COORDS[a];
-    const coordB = CITY_COORDS[b];
-    if (!coordA || !coordB) continue;
-    roadsFeatures.push({
-      type: "Feature",
-      geometry: {
-        type: "LineString",
-        coordinates: [coordA, coordB],
-      },
-    });
-  }
-
-  map.addSource("roads", {
-    type: "geojson",
-    data: {
-      type: "FeatureCollection",
-      features: roadsFeatures,
-    },
+  const roads = graph.roads.flatMap(([a, b]) => {
+    const from = CITY_COORDS[a];
+    const to = CITY_COORDS[b];
+    return from && to ? [{ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [from, to] } }] : [];
   });
-
-  map.addLayer({
-    id: "roads-layer",
-    type: "line",
-    source: "roads",
-    paint: {
-      "line-color": "rgba(255,255,255,0.2)",
-      "line-width": 2,
-    },
-  });
-
-  // 2. Selected Route Highlight
-  if (selectedRoute?.path?.length >= 2) {
+  const route = [];
+  if (selectedRoute?.path?.length > 1) {
     for (let i = 0; i < selectedRoute.path.length - 1; i++) {
-      const a = selectedRoute.path[i];
-      const b = selectedRoute.path[i + 1];
-      const coordA = CITY_COORDS[a];
-      const coordB = CITY_COORDS[b];
-      if (!coordA || !coordB) continue;
-      routeFeatures.push({
-        type: "Feature",
-        geometry: {
-          type: "LineString",
-          coordinates: [coordA, coordB],
-        },
-      });
+      const from = CITY_COORDS[selectedRoute.path[i]];
+      const to = CITY_COORDS[selectedRoute.path[i + 1]];
+      if (from && to) route.push({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [from, to] } });
     }
+  }
+  const asCollection = (features) => ({ type: 'FeatureCollection', features });
 
-    map.addSource("selected-route", {
-      type: "geojson",
-      data: {
-        type: "FeatureCollection",
-        features: routeFeatures,
-      },
-    });
-
-    map.addLayer({
-      id: "route-layer",
-      type: "line",
-      source: "selected-route",
-      paint: {
-        "line-color": "#47d18c",
-        "line-width": 5,
-      },
-    });
+  if (!map.getSource('graph-roads')) {
+    map.addSource('graph-roads', { type: 'geojson', data: asCollection(roads) });
+    map.addLayer({ id: 'graph-roads-line', type: 'line', source: 'graph-roads', paint: { 'line-color': '#738198', 'line-opacity': 0.65, 'line-width': 2 } });
+    map.addSource('selected-route', { type: 'geojson', data: asCollection(route) });
+    map.addLayer({ id: 'selected-route-line', type: 'line', source: 'selected-route', paint: { 'line-color': '#1677ff', 'line-width': 5 } });
+  } else {
+    map.getSource('graph-roads').setData(asCollection(roads));
+    map.getSource('selected-route').setData(asCollection(route));
   }
 
-  // 3. Cities as Markers
-  for (const c of graph.cities) {
-    const coord = CITY_COORDS[c.id];
-    if (!coord) continue;
-
-    const el = document.createElement("div");
-    el.className = `city-marker city-marker--${c.kind}`;
-    el.dataset.kind = c.kind;
-    el.style.width = c.kind === "major" ? "12px" : "8px";
-    el.style.height = c.kind === "major" ? "12px" : "8px";
-    el.style.borderRadius = "50%";
-    el.style.backgroundColor = c.kind === "major" ? "#5b8cff" : "#91a6ff";
-    el.style.border = "1px solid white";
-    el.style.boxShadow = "0 0 4px rgba(0,0,0,0.5)";
-    el.style.cursor = "pointer";
-
-    const label = document.createElement("span");
-    label.className = "city-marker__label";
-    label.textContent = c.name;
-    el.appendChild(label);
-
-    const popup = new mapboxgl.Popup({ offset: 25 }).setHTML(`<b>${c.name}</b>`);
-    const marker = new mapboxgl.Marker(el)
-      .setPopup(popup)
-      .setLngLat(coord)
-      .addTo(map);
-
-    markers.push(marker);
+  if (!mapMarkers[role].length) {
+    for (const city of graph.cities) {
+      const coordinate = CITY_COORDS[city.id];
+      if (!coordinate) continue;
+      const element = document.createElement('button');
+      element.type = 'button';
+      element.className = `city-marker city-marker--${city.kind}`;
+      element.dataset.kind = city.kind;
+      element.setAttribute('aria-label', city.name);
+      element.title = `Select ${city.name}`;
+      element.innerHTML = `<span class="city-marker__dot"></span><span class="city-marker__label"></span>`;
+      element.querySelector('.city-marker__label').textContent = city.name;
+      element.addEventListener('click', (event) => {
+        event.stopPropagation();
+        onMapCityClicked(city.id, city.name);
+      });
+      const marker = new mapboxgl.Marker({ element, anchor: 'center' }).setLngLat(coordinate).addTo(map);
+      mapMarkers[role].push(marker);
+    }
   }
-  updateCityLabelVisibility();
 
-  const statusEl = $(statusId);
-  if (statusEl && !selectedRoute?.path?.length) {
-    statusEl.textContent = 'Click any city on the map or search above to select pickup & destination.';
+  updateCityLabelVisibility(role);
+  const status = $(statusId);
+  if (status && !selectedRoute?.path?.length) {
+    status.textContent = 'Click a city marker or choose pickup and destination to preview the shortest route.';
   }
 }
 
@@ -1293,35 +1296,17 @@ function wireEvents() {
   $('swapBtn')?.addEventListener('click', () => {
     const fromInput = $('fromCitySearch');
     const toInput   = $('toCitySearch');
-    const fromSelect= $('fromCity');
-    const toSelect  = $('toCity');
+    const fromSelect = $('fromCity');
+    const toSelect = $('toCity');
+    if (!fromSelect || !toSelect) return;
 
+    const previousCity = fromSelect.value;
+    fromSelect.value = toSelect.value;
+    toSelect.value = previousCity;
     if (fromInput && toInput) {
-      const tempText = fromInput.value;
+      const previousText = fromInput.value;
       fromInput.value = toInput.value;
-      toInput.value   = tempText;
-    }
-    if (fromCityId === toCityId) {
-      alert("From and To cannot be the same city.");
-      return;
-    }
-    try {
-      const res = await apiPost("/api/request", { userName, fromCityId, toCityId, wantsSharing, numPersons });
-      const req = res.request;
-      lastRequestId = req.id;
-      selectedRoute = null;   // don't auto-highlight — use "Show path" button instead
-      $("userRequestResult").innerHTML = `
-        <div class="pill">Request: <b>${req.id}</b></div>
-        <div class="pill">Persons: <b>${req.numPersons ?? numPersons}</b></div>
-        <div class="pill">Assigned driver: <b>${req.assignedDriverId ?? "any"}</b></div>
-        <div class="pill">Fare: <b>\u20b9${req.soloFare}</b></div>
-        <div class="muted" style="margin-top:8px">Route: ${routeText(req.route)} (${req.route.distance} km)</div>
-      `;
-      $("shareFromCity").value = fromCityId;
-      $("shareToCity").value   = toCityId;
-      await refreshAll();
-    } catch (err) {
-      $("userRequestResult").textContent = err.message;
+      toInput.value = previousText;
     }
     onRouteEndpointsChanged();
   });
@@ -1415,7 +1400,9 @@ function checkSessionAndRole() {
 
 async function main() {
   wireEvents();
-  await initMap();
+  await refreshAll();
+  checkSessionAndRole();
+  await initMap(currentScreen);
   await refreshAll();
 
   // Set default vehicle or URL vehicle

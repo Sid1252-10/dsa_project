@@ -1,0 +1,635 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CabSystem — Sign In</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+/* ── Reset ────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  background: #F8FAFC;
+  color: #101828;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+a { text-decoration: none; color: inherit; }
+button { font-family: inherit; cursor: pointer; }
+input, select { font-family: inherit; }
+
+/* ── Layout ───────────────────────────────────────────── */
+.auth-page { flex: 1; display: grid; grid-template-columns: 1fr 1fr; min-height: 100vh; }
+
+/* ── Left visual panel ────────────────────────────────── */
+.auth-visual {
+  background: linear-gradient(135deg, #101828 0%, #1e3a5f 60%, #0d2644 100%);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: 48px 40px;
+  position: relative; overflow: hidden;
+}
+.auth-visual::before {
+  content: '';
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(ellipse 500px 400px at 20% 30%, rgba(37,99,235,0.2), transparent),
+    radial-gradient(ellipse 400px 300px at 80% 70%, rgba(255,138,0,0.1), transparent);
+}
+.auth-visual__inner { position: relative; z-index: 1; text-align: center; }
+.auth-visual__logo  { font-size: 52px; margin-bottom: 20px; }
+.auth-visual__brand { font-size: 28px; font-weight: 800; color: white; margin-bottom: 10px; }
+.auth-visual__tagline { font-size: 16px; color: rgba(255,255,255,0.6); line-height: 1.7; margin-bottom: 40px; max-width: 320px; }
+
+/* Role cards on left panel */
+.auth-roles { display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 320px; }
+.auth-role-pill {
+  display: flex; align-items: center; gap: 14px;
+  padding: 14px 18px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: left;
+}
+.auth-role-pill:hover, .auth-role-pill.selected {
+  background: rgba(255,255,255,0.12);
+  border-color: rgba(255,255,255,0.25);
+  transform: translateX(4px);
+}
+.auth-role-pill.selected { border-color: var(--pill-color, #2563EB); }
+.auth-role-pill--passenger { --pill-color: #2563EB; }
+.auth-role-pill--passenger.selected { border-color: #2563EB; background: rgba(37,99,235,0.15); }
+.auth-role-pill--driver.selected    { border-color: #12B76A; background: rgba(18,183,106,0.15); }
+.auth-role-pill--manager.selected   { border-color: #FF8A00; background: rgba(255,138,0,0.15); }
+.auth-role-pill__icon  { font-size: 26px; flex-shrink: 0; }
+.auth-role-pill__title { font-size: 15px; font-weight: 700; color: white; }
+.auth-role-pill__desc  { font-size: 12px; color: rgba(255,255,255,0.5); margin-top: 2px; }
+
+.auth-visual__stats {
+  display: flex; gap: 20px; margin-top: 36px; flex-wrap: wrap; justify-content: center;
+}
+.auth-stat {
+  text-align: center;
+  padding: 12px 16px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 10px;
+}
+.auth-stat__num   { font-size: 20px; font-weight: 800; color: white; }
+.auth-stat__label { font-size: 11px; color: rgba(255,255,255,0.5); margin-top: 2px; }
+
+/* ── Right form panel ──────────────────────────────────── */
+.auth-form-panel {
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: 48px 40px;
+  overflow-y: auto;
+}
+.auth-form-wrap { width: 100%; max-width: 440px; }
+
+/* Tabs: Login / Register */
+.auth-tabs { display: flex; border: 1.5px solid #E4E7EC; border-radius: 10px; padding: 4px; margin-bottom: 28px; background: #F8FAFC; }
+.auth-tab {
+  flex: 1; height: 38px;
+  border: none; background: transparent;
+  font-size: 14px; font-weight: 600;
+  color: #667085; border-radius: 7px;
+  cursor: pointer; transition: all 0.15s;
+}
+.auth-tab.active { background: white; color: #101828; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+
+/* Form heading */
+.auth-heading { margin-bottom: 6px; }
+.auth-heading__title { font-size: 24px; font-weight: 800; color: #101828; margin-bottom: 4px; }
+.auth-heading__sub   { font-size: 14px; color: #667085; margin-bottom: 24px; }
+
+/* Role badge shown at top of form */
+.auth-role-badge {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 14px; border-radius: 999px;
+  font-size: 13px; font-weight: 600;
+  margin-bottom: 20px;
+  border: 1.5px solid;
+}
+.auth-role-badge--passenger { background: #EFF6FF; color: #2563EB; border-color: rgba(37,99,235,0.3); }
+.auth-role-badge--driver    { background: #ECFDF5; color: #12B76A; border-color: rgba(18,183,106,0.3); }
+.auth-role-badge--manager   { background: #FFF7ED; color: #FF8A00; border-color: rgba(255,138,0,0.3); }
+
+/* Form controls */
+.form-group { margin-bottom: 14px; }
+.form-label { display: block; font-size: 12px; font-weight: 600; color: #667085; margin-bottom: 5px; letter-spacing: 0.3px; }
+.form-control {
+  width: 100%; height: 44px;
+  padding: 0 14px;
+  border: 1.5px solid #E4E7EC;
+  border-radius: 8px;
+  font-size: 14px; color: #101828;
+  background: white; outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.form-control:focus { border-color: #2563EB; box-shadow: 0 0 0 3px rgba(37,99,235,0.12); }
+.form-control::placeholder { color: #D0D5DD; }
+
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+/* Password field */
+.pw-wrap { position: relative; }
+.pw-wrap .form-control { padding-right: 44px; }
+.pw-toggle { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: #98A2B3; font-size: 16px; padding: 4px; line-height: 1; }
+.pw-toggle:hover { color: #667085; }
+
+/* Remember + forgot */
+.form-check-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.form-check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #667085; cursor: pointer; }
+.form-check input[type="checkbox"] { accent-color: #2563EB; }
+.form-forgot { font-size: 13px; color: #2563EB; font-weight: 600; transition: color 0.15s; }
+.form-forgot:hover { color: #1D4ED8; }
+
+/* Section divider */
+.form-section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #98A2B3; margin: 18px 0 12px; padding-top: 14px; border-top: 1px solid #E4E7EC; }
+
+/* Terms */
+.form-terms { display: flex; align-items: flex-start; gap: 10px; font-size: 12px; color: #667085; margin-bottom: 16px; line-height: 1.6; cursor: pointer; }
+.form-terms input { margin-top: 2px; accent-color: #2563EB; flex-shrink: 0; }
+.form-terms a { color: #2563EB; font-weight: 600; }
+
+/* Error / success */
+.form-alert {
+  padding: 10px 14px; border-radius: 8px;
+  font-size: 13px; margin-bottom: 14px; display: none;
+}
+.form-alert.error { background: #FEF2F0; border: 1px solid rgba(240,68,56,0.3); color: #F04438; display: block; }
+.form-alert.success { background: #ECFDF5; border: 1px solid rgba(18,183,106,0.3); color: #12B76A; display: block; }
+
+/* Submit button */
+.btn-auth {
+  width: 100%; height: 46px;
+  border: none; border-radius: 10px;
+  font-size: 15px; font-weight: 700;
+  background: linear-gradient(135deg, #2563EB, #1D4ED8);
+  color: white; cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 4px 14px rgba(37,99,235,0.35);
+  margin-bottom: 16px;
+}
+.btn-auth:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 8px 20px rgba(37,99,235,0.4); }
+.btn-auth:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+
+/* Switch mode */
+.auth-switch { text-align: center; font-size: 13px; color: #667085; }
+.auth-switch a { color: #2563EB; font-weight: 600; cursor: pointer; }
+.auth-switch a:hover { color: #1D4ED8; }
+
+/* Back link */
+.auth-back { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #667085; margin-bottom: 24px; transition: color 0.15s; }
+.auth-back:hover { color: #101828; }
+.auth-back svg { width: 16px; height: 16px; }
+
+/* Divider with "or" */
+.auth-divider { display: flex; align-items: center; gap: 12px; margin: 16px 0; }
+.auth-divider::before, .auth-divider::after { content: ''; flex: 1; height: 1px; background: #E4E7EC; }
+.auth-divider__text { font-size: 12px; color: #98A2B3; font-weight: 500; white-space: nowrap; }
+
+/* ── Responsive ──────────────────────────────────────── */
+@media (max-width: 820px) {
+  .auth-page { grid-template-columns: 1fr; }
+  .auth-visual { display: none; }
+  .auth-form-panel { padding: 32px 24px; }
+}
+  </style>
+</head>
+<body>
+
+<div class="auth-page">
+
+  <!-- ── LEFT: Visual + Role Selector ─────────────────── -->
+  <div class="auth-visual">
+    <div class="auth-visual__inner">
+      <div class="auth-visual__logo">🚖</div>
+      <div class="auth-visual__brand">CabSystem</div>
+      <div class="auth-visual__tagline">Punjab's smartest cab dispatch. Book in seconds, track live, share rides.</div>
+
+      <div class="auth-roles">
+        <button class="auth-role-pill auth-role-pill--passenger selected" data-role="passenger" onclick="selectRole('passenger', this)">
+          <div class="auth-role-pill__icon">🧑‍💼</div>
+          <div>
+            <div class="auth-role-pill__title">Passenger</div>
+            <div class="auth-role-pill__desc">Book rides, share cabs, track routes</div>
+          </div>
+        </button>
+        <button class="auth-role-pill auth-role-pill--driver" data-role="driver" onclick="selectRole('driver', this)">
+          <div class="auth-role-pill__icon">🚗</div>
+          <div>
+            <div class="auth-role-pill__title">Driver</div>
+            <div class="auth-role-pill__desc">Accept requests, manage your rides</div>
+          </div>
+        </button>
+        <button class="auth-role-pill auth-role-pill--manager" data-role="manager" onclick="selectRole('manager', this)">
+          <div class="auth-role-pill__icon">🛠️</div>
+          <div>
+            <div class="auth-role-pill__title">App Manager</div>
+            <div class="auth-role-pill__desc">Monitor system, view all stats</div>
+          </div>
+        </button>
+      </div>
+
+      <div class="auth-visual__stats">
+        <div class="auth-stat"><div class="auth-stat__num">4</div><div class="auth-stat__label">Drivers</div></div>
+        <div class="auth-stat"><div class="auth-stat__num">23</div><div class="auth-stat__label">Cities</div></div>
+        <div class="auth-stat"><div class="auth-stat__num">₹55</div><div class="auth-stat__label">From</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── RIGHT: Auth Form ───────────────────────────────── -->
+  <div class="auth-form-panel">
+    <div class="auth-form-wrap">
+
+      <a href="./index.html" class="auth-back">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 12L6 8l4-4"/></svg>
+        Back to Home
+      </a>
+
+      <!-- Role badge (dynamic) -->
+      <div class="auth-role-badge auth-role-badge--passenger" id="roleBadge">🧑‍💼 Passenger</div>
+
+      <!-- Login / Register tabs -->
+      <div class="auth-tabs">
+        <button class="auth-tab active" id="tabLogin"    onclick="switchTab('login')">Sign In</button>
+        <button class="auth-tab"        id="tabRegister" onclick="switchTab('register')">Create Account</button>
+      </div>
+
+      <!-- ── LOGIN FORM ──────────────────────────────── -->
+      <div id="loginForm">
+        <div class="auth-heading">
+          <div class="auth-heading__title" id="loginTitle">Welcome back!</div>
+          <div class="auth-heading__sub"   id="loginSub">Sign in to your passenger account</div>
+        </div>
+
+        <div id="loginAlert" class="form-alert"></div>
+
+        <div class="form-group">
+          <label class="form-label">EMAIL / PHONE</label>
+          <input id="loginEmail" class="form-control" type="text" placeholder="you@example.com or +91 98XXX..." autocomplete="username" />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">PASSWORD</label>
+          <div class="pw-wrap">
+            <input id="loginPassword" class="form-control" type="password" placeholder="Enter your password" autocomplete="current-password" />
+            <button class="pw-toggle" onclick="togglePw('loginPassword', this)" type="button">👁</button>
+          </div>
+        </div>
+
+        <div class="form-check-row">
+          <label class="form-check">
+            <input type="checkbox" id="loginRemember" />
+            Remember me
+          </label>
+          <a class="form-forgot" href="#" onclick="alert('Password reset: contact system admin.')">Forgot password?</a>
+        </div>
+
+        <button class="btn-auth" id="loginBtn" onclick="handleLogin()">Sign In →</button>
+
+        <div class="auth-switch">
+          Don't have an account? <a onclick="switchTab('register')">Create one →</a>
+        </div>
+      </div>
+
+      <!-- ── REGISTER FORM ────────────────────────────── -->
+      <div id="registerForm" style="display:none">
+        <div class="auth-heading">
+          <div class="auth-heading__title" id="registerTitle">Create Account</div>
+          <div class="auth-heading__sub"   id="registerSub">Join as a new passenger</div>
+        </div>
+
+        <div id="registerAlert" class="form-alert"></div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">FIRST NAME</label>
+            <input id="regFirst" class="form-control" type="text" placeholder="Gurpreet" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">LAST NAME</label>
+            <input id="regLast" class="form-control" type="text" placeholder="Singh" />
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">EMAIL</label>
+          <input id="regEmail" class="form-control" type="email" placeholder="you@example.com" autocomplete="email" />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">PHONE NUMBER</label>
+          <input id="regPhone" class="form-control" type="tel" placeholder="+91 98XXX XXXXX" />
+        </div>
+
+        <!-- Driver-only fields -->
+        <div id="driverFields" style="display:none">
+          <div class="form-section-title">Driver Details</div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">VEHICLE NUMBER</label>
+              <input id="regVehicle" class="form-control" type="text" placeholder="PB-10-AB-1234" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">VEHICLE TYPE</label>
+              <select id="regVehicleType" class="form-control">
+                <option value="">Select type</option>
+                <option>Mini</option><option>Sedan</option><option>SUV</option><option>Premium</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">DRIVING LICENCE NO.</label>
+            <input id="regLicence" class="form-control" type="text" placeholder="PB-0120-1234567" />
+          </div>
+        </div>
+
+        <!-- Manager-only fields -->
+        <div id="managerFields" style="display:none">
+          <div class="form-section-title">Manager Credentials</div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">EMPLOYEE ID</label>
+              <input id="regEmpId" class="form-control" type="text" placeholder="MGR-2024-001" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">DEPARTMENT</label>
+              <select id="regDept" class="form-control">
+                <option value="">Select dept</option>
+                <option>Operations</option><option>Fleet Management</option><option>Analytics</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">ADMIN ACCESS CODE</label>
+            <input id="regAccessCode" class="form-control" type="password" placeholder="Provided by system admin" />
+          </div>
+        </div>
+
+        <div class="form-section-title">Security</div>
+        <div class="form-group">
+          <label class="form-label">PASSWORD</label>
+          <div class="pw-wrap">
+            <input id="regPassword" class="form-control" type="password" placeholder="Min. 8 characters" autocomplete="new-password" />
+            <button class="pw-toggle" onclick="togglePw('regPassword', this)" type="button">👁</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">CONFIRM PASSWORD</label>
+          <div class="pw-wrap">
+            <input id="regPassword2" class="form-control" type="password" placeholder="Repeat your password" autocomplete="new-password" />
+            <button class="pw-toggle" onclick="togglePw('regPassword2', this)" type="button">👁</button>
+          </div>
+        </div>
+
+        <label class="form-terms">
+          <input type="checkbox" id="regTerms" />
+          I agree to the <a href="#" onclick="return false">Terms of Service</a> and <a href="#" onclick="return false">Privacy Policy</a>
+        </label>
+
+        <button class="btn-auth" id="registerBtn" onclick="handleRegister()">Create Account →</button>
+
+        <div class="auth-switch">
+          Already have an account? <a onclick="switchTab('login')">Sign in →</a>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────
+let currentRole = 'passenger';
+
+const ROLE_META = {
+  passenger: {
+    icon: '🧑‍💼', label: 'Passenger',
+    badgeClass: 'auth-role-badge--passenger',
+    loginTitle: 'Welcome back!', loginSub: 'Sign in to your passenger account',
+    registerTitle: 'Join as Passenger', registerSub: 'Create your passenger account to start booking rides',
+  },
+  driver: {
+    icon: '🚗', label: 'Driver',
+    badgeClass: 'auth-role-badge--driver',
+    loginTitle: 'Driver Sign In', loginSub: 'Sign in to your driver account',
+    registerTitle: 'Become a Driver', registerSub: 'Register to join our driver fleet',
+  },
+  manager: {
+    icon: '🛠️', label: 'App Manager',
+    badgeClass: 'auth-role-badge--manager',
+    loginTitle: 'Manager Sign In', loginSub: 'Sign in to access the system dashboard',
+    registerTitle: 'Manager Registration', registerSub: 'Create a manager account with your employee credentials',
+  },
+};
+
+// ── Role selection ─────────────────────────────────────────
+function selectRole(role, el) {
+  currentRole = role;
+  document.querySelectorAll('.auth-role-pill').forEach(p => p.classList.remove('selected'));
+  el.classList.add('selected');
+
+  const meta = ROLE_META[role];
+  const badge = document.getElementById('roleBadge');
+  badge.className = `auth-role-badge ${meta.badgeClass}`;
+  badge.textContent = `${meta.icon} ${meta.label}`;
+
+  // Update login/register titles
+  document.getElementById('loginTitle').textContent    = meta.loginTitle;
+  document.getElementById('loginSub').textContent      = meta.loginSub;
+  document.getElementById('registerTitle').textContent = meta.registerTitle;
+  document.getElementById('registerSub').textContent   = meta.registerSub;
+
+  // Toggle driver/manager specific fields
+  document.getElementById('driverFields').style.display  = role === 'driver'  ? 'block' : 'none';
+  document.getElementById('managerFields').style.display = role === 'manager' ? 'block' : 'none';
+
+  clearAlerts();
+}
+
+// ── Tab switch ─────────────────────────────────────────────
+function switchTab(tab) {
+  const isLogin = tab === 'login';
+  document.getElementById('loginForm').style.display    = isLogin ? 'block' : 'none';
+  document.getElementById('registerForm').style.display = isLogin ? 'none'  : 'block';
+  document.getElementById('tabLogin').classList.toggle('active', isLogin);
+  document.getElementById('tabRegister').classList.toggle('active', !isLogin);
+  clearAlerts();
+}
+
+// ── Password toggle ────────────────────────────────────────
+function togglePw(inputId, btn) {
+  const input = document.getElementById(inputId);
+  const show  = input.type === 'password';
+  input.type  = show ? 'text' : 'password';
+  btn.textContent = show ? '🙈' : '👁';
+}
+
+// ── Alert helpers ──────────────────────────────────────────
+function showAlert(id, msg, type = 'error') {
+  const el = document.getElementById(id);
+  el.className   = `form-alert ${type}`;
+  el.textContent = msg;
+}
+function clearAlerts() {
+  ['loginAlert', 'registerAlert'].forEach(id => {
+    const el = document.getElementById(id);
+    el.className   = 'form-alert';
+    el.textContent = '';
+  });
+}
+
+// ── localStorage user store ────────────────────────────────
+function getUsers() {
+  try { return JSON.parse(localStorage.getItem('cabsystem_users') || '[]'); } catch { return []; }
+}
+function saveUsers(arr) {
+  localStorage.setItem('cabsystem_users', JSON.stringify(arr));
+}
+function setSession(user) {
+  sessionStorage.setItem('cabsystem_session', JSON.stringify(user));
+}
+
+// ── Login ──────────────────────────────────────────────────
+function handleLogin() {
+  const email    = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const remember = document.getElementById('loginRemember').checked;
+
+  if (!email || !password) {
+    showAlert('loginAlert', '⚠️ Please enter your email/phone and password.'); return;
+  }
+
+  // Demo: accept any login for existing users OR for demo accounts
+  const users = getUsers();
+  let user = users.find(u => (u.email === email || u.phone === email) && u.password === password && u.role === currentRole);
+
+  // Fallback demo accounts (always work)
+  const DEMO = {
+    passenger: { email: 'passenger@demo.com', password: 'demo1234' },
+    driver:    { email: 'driver@demo.com',    password: 'demo1234' },
+    manager:   { email: 'manager@demo.com',   password: 'demo1234' },
+  };
+  const demo = DEMO[currentRole];
+  if (!user && (email === demo.email || email === 'demo') && password === demo.password) {
+    user = { name: `Demo ${ROLE_META[currentRole].label}`, email: demo.email, role: currentRole };
+  }
+
+  if (!user) {
+    showAlert('loginAlert', '❌ Invalid credentials. Try demo@demo.com / demo1234, or create an account.'); return;
+  }
+
+  const session = { name: user.name || user.firstName + ' ' + (user.lastName || ''), email: user.email, role: currentRole };
+  setSession(session);
+  if (remember) localStorage.setItem('cabsystem_remember', JSON.stringify(session));
+
+  const btn = document.getElementById('loginBtn');
+  btn.disabled = true;
+  btn.textContent = '✓ Signing in…';
+  const urlVehicle = new URLSearchParams(window.location.search).get('vehicle');
+  const vehicleParam = urlVehicle ? `&vehicle=${encodeURIComponent(urlVehicle)}` : '';
+  setTimeout(() => { window.location.href = `./app.html?role=${currentRole}${vehicleParam}`; }, 600);
+}
+
+// ── Register ───────────────────────────────────────────────
+function handleRegister() {
+  const first    = document.getElementById('regFirst').value.trim();
+  const last     = document.getElementById('regLast').value.trim();
+  const email    = document.getElementById('regEmail').value.trim();
+  const phone    = document.getElementById('regPhone').value.trim();
+  const password = document.getElementById('regPassword').value;
+  const password2= document.getElementById('regPassword2').value;
+  const terms    = document.getElementById('regTerms').checked;
+
+  if (!first || !email || !password) {
+    showAlert('registerAlert', '⚠️ Please fill in all required fields.'); return;
+  }
+  if (!/\S+@\S+\.\S+/.test(email)) {
+    showAlert('registerAlert', '⚠️ Please enter a valid email address.'); return;
+  }
+  if (password.length < 8) {
+    showAlert('registerAlert', '⚠️ Password must be at least 8 characters.'); return;
+  }
+  if (password !== password2) {
+    showAlert('registerAlert', '⚠️ Passwords do not match.'); return;
+  }
+  if (!terms) {
+    showAlert('registerAlert', '⚠️ Please accept the Terms of Service.'); return;
+  }
+
+  // Driver validation
+  if (currentRole === 'driver') {
+    if (!document.getElementById('regVehicle').value.trim()) {
+      showAlert('registerAlert', '⚠️ Please enter your vehicle number.'); return;
+    }
+  }
+  // Manager validation
+  if (currentRole === 'manager') {
+    const code = document.getElementById('regAccessCode').value.trim();
+    if (!code) { showAlert('registerAlert', '⚠️ Please enter the admin access code.'); return; }
+    if (code !== 'admin2024') { showAlert('registerAlert', '❌ Invalid access code. Contact your system admin.'); return; }
+  }
+
+  const users = getUsers();
+  if (users.find(u => u.email === email && u.role === currentRole)) {
+    showAlert('registerAlert', '❌ An account with this email already exists. Please sign in.'); return;
+  }
+
+  const newUser = { firstName: first, lastName: last, name: `${first} ${last}`, email, phone, password, role: currentRole };
+  users.push(newUser);
+  saveUsers(users);
+
+  setSession({ name: newUser.name, email, role: currentRole });
+
+  const btn = document.getElementById('registerBtn');
+  btn.disabled = true;
+  btn.textContent = '✓ Creating account…';
+  showAlert('registerAlert', `✅ Account created! Redirecting…`, 'success');
+  const urlVehicle = new URLSearchParams(window.location.search).get('vehicle');
+  const vehicleParam = urlVehicle ? `&vehicle=${encodeURIComponent(urlVehicle)}` : '';
+  setTimeout(() => { window.location.href = `./app.html?role=${currentRole}${vehicleParam}`; }, 800);
+}
+
+// ── Auto-fill remembered session ──────────────────────────
+(function init() {
+  const remembered = localStorage.getItem('cabsystem_remember');
+  if (remembered) {
+    try {
+      const s = JSON.parse(remembered);
+      document.getElementById('loginEmail').value = s.email || '';
+      document.getElementById('loginRemember').checked = true;
+      selectRole(s.role || 'passenger', document.querySelector(`.auth-role-pill[data-role="${s.role || 'passenger'}"]`));
+    } catch (_) {}
+  }
+  // Support ?role= in URL
+  const urlParams = new URLSearchParams(window.location.search);
+  const targetRole = urlParams.get('role');
+  if (targetRole && ROLE_META[targetRole]) {
+    const pill = document.querySelector(`.auth-role-pill[data-role="${targetRole}"]`);
+    if (pill) selectRole(targetRole, pill);
+  }
+
+  // Handle Enter key
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      if (document.getElementById('loginForm').style.display !== 'none') handleLogin();
+      else handleRegister();
+    }
+  });
+})();
+</script>
+</body>
+</html>
+

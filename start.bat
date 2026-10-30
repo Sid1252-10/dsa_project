@@ -4,32 +4,69 @@ setlocal
 cd /d "%~dp0"
 
 echo =======================================================
-echo    Cab Allocation System Startup Script (Windows)
+echo    🚖 Cab Allocation System Startup Script (Windows)
 echo =======================================================
 
-:: 1. Detect Python
-where python >nul 2>nul
-if %ERRORLEVEL% neq 0 (
+:: 1. Detect Python executable
+set "PYTHON_CMD="
+py -3 --version >nul 2>&1 && set "PYTHON_CMD=py -3"
+if not defined PYTHON_CMD (
+    python --version >nul 2>&1 && set "PYTHON_CMD=python"
+)
+if not defined PYTHON_CMD (
+    python3 --version >nul 2>&1 && set "PYTHON_CMD=python3"
+)
+
+if not defined PYTHON_CMD (
     echo [ERROR] Python is not installed or not in PATH.
     pause
     exit /b 1
 )
 
-:: 2. Setup venv
-if not exist "venv\Scripts\python.exe" (
-    echo [1/3] Creating virtual environment...
-    python -m venv venv
+for /f "delims=" %%v in ('%PYTHON_CMD% --version 2^>^&1') do set "PY_VER=%%v"
+echo [1/4] Using Python: %PY_VER%
+
+:: 2. Setup virtual environment
+set "VENV_DIR=venv"
+if not exist "%VENV_DIR%\Scripts\python.exe" (
+    echo [2/4] Creating virtual environment in '%VENV_DIR%'...
+    %PYTHON_CMD% -m venv "%VENV_DIR%"
+) else (
+    echo [2/4] Virtual environment found in '%VENV_DIR%'.
 )
 
+set "VENV_PYTHON=%VENV_DIR%\Scripts\python.exe"
+
 :: 3. Install requirements
-echo [2/3] Installing requirements...
-venv\Scripts\python.exe -m pip install --quiet -r requirements.txt
+echo [3/4] Installing dependencies from requirements.txt...
+"%VENV_PYTHON%" -m pip install --quiet --upgrade pip
+"%VENV_PYTHON%" -m pip install --quiet -r requirements.txt
 
-:: 4. Start Web UI in background and CLI in foreground
-echo [3/3] Starting backend and frontend...
+:: 4. Start servers
+echo [4/4] Starting backend and frontend simultaneously...
+
 set PORT=5174
-start "" /b venv\Scripts\python.exe web\server\server.py
-timeout /t 2 /nobreak >nul
-start http://localhost:5174
+set WEB_URL=http://localhost:5174
 
-venv\Scripts\python.exe main.py
+:: Start Web UI Server in background window titled WebUIServer
+start "WebUIServer" /min "%VENV_PYTHON%" web\server\server.py
+
+timeout /t 2 /nobreak >nul
+
+echo.
+echo -------------------------------------------------------
+echo   🌐 Web UI (Frontend + API): %WEB_URL%
+echo -------------------------------------------------------
+
+:: Open default browser
+start "" "%WEB_URL%"
+
+:: Start interactive CLI Backend Simulator in foreground
+"%VENV_PYTHON%" main.py
+
+:: Cleanup background server upon exit
+echo.
+echo Shutting down web server...
+taskkill /fi "WINDOWTITLE eq WebUIServer*" /t /f >nul 2>&1
+echo Goodbye!
+

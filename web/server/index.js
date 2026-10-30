@@ -30,12 +30,12 @@ app.get("/api/state", (req, res) => {
 });
 
 app.post("/api/request", (req, res) => {
-  const { userName, fromCityId, toCityId, wantsSharing } = req.body ?? {};
+  const { userName, fromCityId, toCityId, wantsSharing, numPersons } = req.body ?? {};
   if (!userName || !fromCityId || !toCityId) {
     res.status(400).json({ ok: false, error: "userName, fromCityId, toCityId are required." });
     return;
   }
-  const result = createRideRequest({ userName, fromCityId, toCityId, wantsSharing });
+  const result = createRideRequest({ userName, fromCityId, toCityId, wantsSharing, numPersons });
   res.status(result.ok ? 200 : 400).json(result);
 });
 

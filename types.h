@@ -1,9 +1,10 @@
 /*
- * types.h
- * -------
- * Shared structs, constants, global variable declarations (extern),
- * small inline utilities, and all function prototypes.
- * Every .cpp file includes this one header.
+ * types.h  —  Shared structs, constants, globals, and function prototypes.
+ *
+ *  DSA Concepts Used:
+ *    - FIFO Queue          : request_queue, waiting_queue
+ *    - Greedy Matching     : find_nearest_driver (Manhattan distance)
+ *    - Ride-Share Heuristic: try_ride_share (threshold-based scan)
  */
 
 #ifndef TYPES_H
@@ -12,8 +13,9 @@
 #include <iostream>
 #include <string>
 #include <queue>
-#include <cmath>    // abs()
-#include <climits>  // INT_MAX
+#include <cmath>
+#include <climits>
+#include <iomanip>
 
 using namespace std;
 
@@ -21,43 +23,42 @@ using namespace std;
 //  Constants
 // ─────────────────────────────────────────────
 const int MAX_DRIVERS     = 20;
-const int SHARE_THRESHOLD = 3;   // max Manhattan dist to allow ride-sharing
+const int SHARE_THRESHOLD = 3;
 const int DRIVER_IDLE     = 0;
 const int DRIVER_ON_RIDE  = 1;
 
 // ─────────────────────────────────────────────
-//  Structs
+//  Core Structs
 // ─────────────────────────────────────────────
 
 struct Location {
-    int x;
-    int y;
+    int x, y;
 };
 
 struct RideRequest {
-    int      request_id;
-    string   user_name;
+    int    request_id;
+    string user_name;
     Location source;
     Location destination;
-    bool     wants_sharing;
-    bool     is_shared;
-    string   shared_with;
-    int      assigned_driver_id;  // -1 = unassigned
+    bool   wants_sharing;
+    bool   is_shared;
+    string shared_with;
+    int    assigned_driver_id;   // -1 = not yet assigned
 };
 
 struct Driver {
-    int      driver_id;
-    string   name;
+    int    driver_id;
+    string name;
     Location location;
-    int      state;          // DRIVER_IDLE or DRIVER_ON_RIDE
-    bool     is_registered;
+    int    state;                // DRIVER_IDLE or DRIVER_ON_RIDE
+    bool   is_registered;
 };
 
 struct ActiveRide {
     int    driver_id;
     int    request_id;
     string rider_name;
-    string co_rider;   // empty if solo
+    string co_rider;             // empty if solo ride
     bool   in_use;
 };
 
@@ -74,23 +75,18 @@ extern int                total_rides_completed;
 extern int                total_shared_rides;
 
 // ─────────────────────────────────────────────
-//  Inline Utilities  (used by all files)
+//  Inline Utilities
 // ─────────────────────────────────────────────
 
 inline int manhattan_distance(Location a, Location b) {
     return abs(a.x - b.x) + abs(a.y - b.y);
 }
 
-inline void print_separator(char ch = '-', int width = 55) {
-    for (int i = 0; i < width; i++) cout << ch;
-    cout << "\n";
-}
-
 // ─────────────────────────────────────────────
 //  Function Prototypes
 // ─────────────────────────────────────────────
 
-// --- driver.cpp ---
+// driver.cpp
 bool   register_driver(int id, string name, int x, int y);
 int    find_driver_index_by_id(int driver_id);
 int    find_nearest_driver(Location src);
@@ -99,23 +95,19 @@ void   record_active_ride(int driver_id, RideRequest req);
 void   clear_active_ride(int driver_id);
 string get_rider_for_driver(int driver_id);
 void   complete_ride(int driver_id);
-void   display_driver_status();
-void   display_active_rides();
 
-// --- dispatch.cpp ---
+// dispatch.cpp
 bool try_ride_share(RideRequest &new_req, RideRequest &matched_req);
-void assign_driver_to_request(RideRequest req, bool verbose);
+void assign_driver_to_request(RideRequest req);
 void try_dispatch_waiting();
 void submit_and_dispatch(string user_name,
                          int src_x, int src_y,
                          int dst_x, int dst_y,
-                         bool wants_sharing,
-                         bool show_booking_header);
+                         bool wants_sharing);
 void process_pending_queue();
 void cancel_waiting_request(int request_id);
 
-// --- main.cpp ---
-void display_queue_status();
+// main.cpp
 void load_demo_data();
 
 #endif

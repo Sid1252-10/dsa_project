@@ -1,124 +1,300 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Punjab Cab System</title>
-    <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/v3.0.1/mapbox-gl.css" />
-    <link rel="stylesheet" href="./styles.css" />
-    <script src="https://api.mapbox.com/mapbox-gl-js/v3.0.1/mapbox-gl.js"></script>
-  </head>
-  <body>
-    <div class="app">
-      <header class="topbar">
-        <div class="brand">
-          <div class="brand__title">Punjab Cab System</div>
-          <div class="brand__sub">User (left) · Map (center) · Driver (right)</div>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CabSystem — Your Journey, Our Priority</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./landing.css" />
+</head>
+<body>
+
+<!-- ── NAVBAR ─────────────────────────────────────────────── -->
+<nav class="nav" id="navbar">
+  <a href="#" class="nav__brand">
+    <span class="nav__brand-icon">🚖</span>
+    CabSystem
+  </a>
+  <div class="nav__links" id="navLinks">
+    <a href="#" class="nav__link">Home</a>
+    <a href="#features" class="nav__link">Features</a>
+    <a href="#how-it-works" class="nav__link">How It Works</a>
+    <a href="#cabs" class="nav__link">Cabs</a>
+    <a href="#about" class="nav__link">About</a>
+  </div>
+  <div class="nav__actions">
+    <a href="./auth.html" class="btn-nav-login">Login</a>
+    <a href="./auth.html" class="btn-nav-cta">Get Started →</a>
+  </div>
+  <button class="hamburger" id="hamburger" aria-label="Open menu">
+    <span></span><span></span><span></span>
+  </button>
+</nav>
+
+<!-- ── HERO ───────────────────────────────────────────────── -->
+<section class="hero" id="home">
+  <div class="hero__inner">
+    <div class="hero__content">
+      <div class="hero__badge">
+        <span class="hero__badge-dot"></span>
+        Live · 4 Drivers Active · 23 Punjab Cities
+      </div>
+      <h1 class="hero__title">
+        Your Journey,<br /><span>Our Priority.</span>
+      </h1>
+      <p class="hero__sub">
+        Book your ride in seconds. Travel comfortably, safely, and affordably across Punjab with our smart DSA-powered cab dispatch system.
+      </p>
+      <div class="hero__actions">
+        <a href="./auth.html" class="btn-hero btn-hero--primary">🚖 Book a Ride</a>
+        <a href="#how-it-works" class="btn-hero btn-hero--ghost">Learn More ↓</a>
+      </div>
+      <div class="hero__stats">
+        <div class="hero__stat">
+          <div class="hero__stat-num">4</div>
+          <div class="hero__stat-label">Active Drivers</div>
         </div>
-        <div class="topbar__right">
-          <button id="refreshBtn" class="btn btn--ghost">Refresh</button>
-          <button id="resetBtn" class="btn btn--ghost">Reset demo state</button>
-          <div id="serverTime" class="muted"></div>
+        <div class="hero__stat">
+          <div class="hero__stat-num">23</div>
+          <div class="hero__stat-label">Punjab Cities</div>
         </div>
-      </header>
-
-      <main class="layout">
-        <section class="panel panel--left">
-          <div class="panel__title">User View</div>
-
-          <div class="card">
-            <div class="card__title">Request a ride</div>
-            <div class="grid">
-              <label class="field">
-                <span>Username</span>
-                <input id="userName" placeholder="e.g. Alice" value="Alice" />
-              </label>
-              <label class="field">
-                <span>From</span>
-                <select id="fromCity"></select>
-              </label>
-              <label class="field">
-                <span>To</span>
-                <select id="toCity"></select>
-              </label>
-              <label class="field field--inline">
-                <input id="wantsSharing" type="checkbox" />
-                <span>Enable sharing</span>
-              </label>
-              <button id="submitRide" class="btn btn--primary">Submit request</button>
-            </div>
-            <div id="userRequestResult" class="result"></div>
-          </div>
-
-          <div class="card">
-            <div class="card__title">Sharing</div>
-            <div class="muted">
-              Select where you want to be picked up and dropped (must be on the trip route), then search rides going the same way.
-            </div>
-            <div class="grid" style="margin-top:10px">
-              <label class="field">
-                <span>Share pickup (From)</span>
-                <select id="shareFromCity"></select>
-              </label>
-              <label class="field">
-                <span>Share drop (To)</span>
-                <select id="shareToCity"></select>
-              </label>
-            </div>
-            <div class="row">
-              <button id="findShareBtn" class="btn">Find share rides</button>
-            </div>
-            <div id="shareCandidates" class="list"></div>
-          </div>
-
-          <div class="card">
-            <div class="card__title">Incoming share requests (rider approval)</div>
-            <div class="muted">If your ride is active, you can accept/reject sharing proposals here.</div>
-            <div id="incomingShares" class="list"></div>
-          </div>
-        </section>
-
-        <section class="map">
-          <div class="map__header">
-            <div class="map__title">Punjab Cities & Roads</div>
-            <div class="map__legend">
-              <span class="dot dot--major"></span><span>Major</span>
-              <span class="dot dot--minor"></span><span>Minor</span>
-              <span class="line line--route"></span><span>Selected route</span>
-            </div>
-          </div>
-          <div class="map__canvas">
-            <div id="mapContainer"></div>
-          </div>
-          <div id="mapStatus" class="map__status muted"></div>
-        </section>
-
-        <section class="panel panel--right">
-          <div class="panel__title">Driver View</div>
-
-          <div class="card">
-            <div class="card__title">Select driver</div>
-            <label class="field">
-              <span>Driver</span>
-              <select id="driverSelect"></select>
-            </label>
-            <div id="driverStatus" class="muted"></div>
-          </div>
-
-          <div class="card">
-            <div class="card__title">Requests (accept / decline)</div>
-            <div id="driverRequests" class="list"></div>
-          </div>
-
-          <div class="card">
-            <div class="card__title">Driver notifications</div>
-            <div id="driverNotifications" class="list"></div>
-          </div>
-        </section>
-      </main>
+        <div class="hero__stat">
+          <div class="hero__stat-num">₹55</div>
+          <div class="hero__stat-label">Starting Fare</div>
+        </div>
+      </div>
     </div>
 
-    <script type="module" src="./app.js"></script>
-  </body>
-</html>
+    <div class="hero__visual">
+      <div class="hero__svg-wrap">
+        <svg viewBox="0 0 440 340" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:100%;filter:drop-shadow(0 20px 40px rgba(37,99,235,0.15))">
+          <defs>
+            <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#DBEAFE"/><stop offset="100%" stop-color="#EFF6FF"/></linearGradient>
+            <linearGradient id="road" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#374151"/><stop offset="100%" stop-color="#1F2937"/></linearGradient>
+            <linearGradient id="cab" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#3B82F6"/><stop offset="100%" stop-color="#2563EB"/></linearGradient>
+          </defs>
+          <rect width="440" height="340" rx="20" fill="url(#sky)"/>
+          <rect x="20" y="120" width="40" height="140" rx="4" fill="#BFDBFE" opacity="0.7"/>
+          <rect x="30" y="100" width="25" height="30" rx="2" fill="#93C5FD" opacity="0.7"/>
+          <rect x="70" y="80" width="55" height="180" rx="4" fill="#93C5FD" opacity="0.6"/>
+          <rect x="80" y="60" width="35" height="30" rx="2" fill="#60A5FA" opacity="0.7"/>
+          <rect x="135" y="110" width="35" height="150" rx="4" fill="#BFDBFE" opacity="0.5"/>
+          <rect x="360" y="100" width="50" height="160" rx="4" fill="#BFDBFE" opacity="0.7"/>
+          <rect x="370" y="75" width="30" height="35" rx="2" fill="#93C5FD" opacity="0.7"/>
+          <rect x="310" y="130" width="40" height="130" rx="4" fill="#93C5FD" opacity="0.6"/>
+          <rect x="78" y="90" width="8" height="8" rx="1" fill="#2563EB" opacity="0.4"/>
+          <rect x="93" y="90" width="8" height="8" rx="1" fill="#2563EB" opacity="0.4"/>
+          <rect x="78" y="108" width="8" height="8" rx="1" fill="#2563EB" opacity="0.4"/>
+          <rect x="93" y="108" width="8" height="8" rx="1" fill="white" opacity="0.6"/>
+          <rect x="366" y="112" width="8" height="8" rx="1" fill="white" opacity="0.6"/>
+          <rect x="382" y="130" width="8" height="8" rx="1" fill="#2563EB" opacity="0.4"/>
+          <rect y="270" width="440" height="70" fill="url(#road)"/>
+          <rect x="0" y="300" width="440" height="3" fill="#374151"/>
+          <rect x="50" y="282" width="40" height="6" rx="3" fill="#F59E0B" opacity="0.7"/>
+          <rect x="120" y="282" width="40" height="6" rx="3" fill="#F59E0B" opacity="0.7"/>
+          <rect x="190" y="282" width="40" height="6" rx="3" fill="#F59E0B" opacity="0.7"/>
+          <rect x="260" y="282" width="40" height="6" rx="3" fill="#F59E0B" opacity="0.7"/>
+          <rect x="330" y="282" width="40" height="6" rx="3" fill="#F59E0B" opacity="0.7"/>
+          <rect y="260" width="440" height="12" fill="#6B7280" opacity="0.5"/>
+          <rect x="130" y="200" width="180" height="70" rx="8" fill="url(#cab)"/>
+          <path d="M160 200 L170 160 L270 160 L280 200Z" fill="#1D4ED8"/>
+          <rect x="175" y="165" width="38" height="28" rx="4" fill="#BFDBFE" opacity="0.9"/>
+          <rect x="222" y="165" width="38" height="28" rx="4" fill="#BFDBFE" opacity="0.9"/>
+          <rect x="130" y="218" width="180" height="8" fill="#FF8A00"/>
+          <line x1="220" y1="200" x2="220" y2="270" stroke="#1D4ED8" stroke-width="2"/>
+          <circle cx="170" cy="272" r="20" fill="#1F2937"/>
+          <circle cx="170" cy="272" r="12" fill="#374151"/>
+          <circle cx="170" cy="272" r="5"  fill="#9CA3AF"/>
+          <circle cx="270" cy="272" r="20" fill="#1F2937"/>
+          <circle cx="270" cy="272" r="12" fill="#374151"/>
+          <circle cx="270" cy="272" r="5"  fill="#9CA3AF"/>
+          <rect x="128" y="220" width="12" height="18" rx="4" fill="#FEF3C7"/>
+          <rect x="128" y="220" width="12" height="18" rx="4" fill="#F59E0B" opacity="0.6"/>
+          <rect x="300" y="220" width="10" height="14" rx="3" fill="#EF4444" opacity="0.7"/>
+          <rect x="195" y="148" width="50" height="16" rx="4" fill="#F59E0B"/>
+          <text x="220" y="160" text-anchor="middle" font-size="9" font-weight="700" fill="white" font-family="Inter,sans-serif">TAXI</text>
+          <line x1="40" y1="218" x2="115" y2="218" stroke="#93C5FD" stroke-width="2" stroke-dasharray="8 4" opacity="0.6"/>
+          <circle cx="350" cy="130" r="20" fill="#EFF6FF" stroke="#2563EB" stroke-width="2"/>
+          <text x="350" y="136" text-anchor="middle" font-size="16" font-family="Inter,sans-serif">📍</text>
+          <text x="80"  y="50" font-size="14" opacity="0.5">✦</text>
+          <text x="380" y="70" font-size="10" opacity="0.4">✦</text>
+          <text x="320" y="45" font-size="16" opacity="0.3">✦</text>
+        </svg>
+        <div class="hero__float-card">
+          <div class="hero__float-inner">
+            <div class="hero__float-icon">✅</div>
+            <div><div class="hero__float-text">Ride Confirmed!</div><div class="hero__float-sub">Driver arriving in 3 min</div></div>
+          </div>
+        </div>
+        <div class="hero__float-card">
+          <div class="hero__float-inner">
+            <div class="hero__float-icon">🤝</div>
+            <div><div class="hero__float-text">Save ₹140</div><div class="hero__float-sub">Enable ride sharing</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
 
+<!-- ── FEATURES ────────────────────────────────────────────── -->
+<section class="section" id="features">
+  <div class="section__inner">
+    <div class="section__label">Why CabSystem</div>
+    <h2 class="section__title">Everything You Need in a Cab Service</h2>
+    <p class="section__sub">Designed for speed, reliability and transparency — no hidden charges, no surprises.</p>
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="feature-card__icon">⚡</div>
+        <h3 class="feature-card__title">Quick Booking</h3>
+        <p class="feature-card__body">Book your cab within seconds using our intelligent dispatch system. Nearest driver auto-assigned using Dijkstra's algorithm.</p>
+      </div>
+      <div class="feature-card feature-card--orange">
+        <div class="feature-card__icon">💰</div>
+        <h3 class="feature-card__title">Affordable Pricing</h3>
+        <p class="feature-card__body">Transparent fares starting from just ₹55. Enable ride sharing to save up to 35% on every trip.</p>
+      </div>
+      <div class="feature-card feature-card--green">
+        <div class="feature-card__icon">🛡️</div>
+        <h3 class="feature-card__title">Safe &amp; Secure</h3>
+        <p class="feature-card__body">All drivers are verified. Live route tracking on the Punjab road network map for every ride.</p>
+      </div>
+      <div class="feature-card feature-card--purple">
+        <div class="feature-card__icon">🕐</div>
+        <h3 class="feature-card__title">24/7 Available</h3>
+        <p class="feature-card__body">Our auto-dispatch system works round the clock. Rides auto-complete and drivers stay ready for the next request.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── HOW IT WORKS ─────────────────────────────────────────── -->
+<section class="section hiw" id="how-it-works">
+  <div class="section__inner">
+    <div class="section__label">Simple Process</div>
+    <h2 class="section__title">How It Works</h2>
+    <p class="section__sub">Book your ride in three easy steps. Our smart system does the rest.</p>
+    <div class="hiw-steps">
+      <div class="hiw-step">
+        <div class="hiw-step__num">📍</div>
+        <h3 class="hiw-step__title">Enter Pickup &amp; Destination</h3>
+        <p class="hiw-step__body">Search from 23 connected Punjab cities with smart autocomplete. Our Dijkstra algorithm finds the optimal route instantly.</p>
+      </div>
+      <div class="hiw-step">
+        <div class="hiw-step__num">🚗</div>
+        <h3 class="hiw-step__title">Choose Your Cab Type</h3>
+        <p class="hiw-step__body">Pick from Mini, Sedan, SUV, Premium or Shared rides. The nearest idle driver is dispatched to your location.</p>
+      </div>
+      <div class="hiw-step">
+        <div class="hiw-step__num">✅</div>
+        <h3 class="hiw-step__title">Ride &amp; Track Live</h3>
+        <p class="hiw-step__body">Watch your ride on the interactive Punjab road map. Enable sharing for extra savings.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── CAB CATEGORIES ──────────────────────────────────────── -->
+<section class="section" id="cabs">
+  <div class="section__inner">
+    <div class="section__label">Cab Options</div>
+    <h2 class="section__title">Choose Your Ride</h2>
+    <p class="section__sub">From budget-friendly mini cabs to premium vehicles — pick what fits your journey.</p>
+    <div class="cabs-grid">
+      <div class="cab-card"><span class="cab-card__emoji">🚗</span><div class="cab-card__name">Mini</div><div class="cab-card__capacity">👤 1–2 Passengers</div><div class="cab-card__price">₹55</div><div class="cab-card__price-label">Starting fare</div><div class="cab-card__desc">Compact hatchback. Perfect for solo trips and short city rides.</div><a href="./auth.html?vehicle=mini" class="cab-card__btn">Book Now →</a></div>
+      <div class="cab-card"><span class="cab-card__emoji">🚙</span><div class="cab-card__name">Sedan</div><div class="cab-card__capacity">👥 1–4 Passengers</div><div class="cab-card__price">₹75</div><div class="cab-card__price-label">Starting fare</div><div class="cab-card__desc">Comfortable sedan with ample legroom. Great for family and group travel.</div><a href="./auth.html?vehicle=sedan" class="cab-card__btn">Book Now →</a></div>
+      <div class="cab-card"><span class="cab-card__emoji">🚐</span><div class="cab-card__name">SUV</div><div class="cab-card__capacity">👨‍👩‍👧‍👦 1–6 Passengers</div><div class="cab-card__price">₹120</div><div class="cab-card__price-label">Starting fare</div><div class="cab-card__desc">Spacious SUV ideal for larger groups and luggage-heavy trips.</div><a href="./auth.html?vehicle=suv" class="cab-card__btn">Book Now →</a></div>
+      <div class="cab-card"><span class="cab-card__emoji">⭐</span><div class="cab-card__name">Premium</div><div class="cab-card__capacity">👤 1–4 Passengers</div><div class="cab-card__price">₹180</div><div class="cab-card__price-label">Starting fare</div><div class="cab-card__desc">Luxury sedan experience with premium comfort for business travel.</div><a href="./auth.html?vehicle=premium" class="cab-card__btn">Book Now →</a></div>
+      <div class="cab-card"><span class="cab-card__emoji">🤝</span><div class="cab-card__name">Shared</div><div class="cab-card__capacity">🔀 2 Riders, Save 35%</div><div class="cab-card__price">₹36</div><div class="cab-card__price-label">Per person est.</div><div class="cab-card__desc">Smart ride-sharing that pairs compatible riders going the same way.</div><a href="./auth.html?vehicle=shared" class="cab-card__btn">Book Now →</a></div>
+    </div>
+  </div>
+</section>
+
+<!-- ── TESTIMONIALS ─────────────────────────────────────────── -->
+<section class="section testimonials" id="about">
+  <div class="section__inner">
+    <div class="section__label">Customer Stories</div>
+    <h2 class="section__title">What Our Riders Say</h2>
+    <p class="section__sub">Thousands of happy passengers across Punjab trust CabSystem for their daily commute.</p>
+    <div class="testimonials-grid">
+      <div class="testimonial-card"><div class="testimonial-card__stars">★★★★★</div><p class="testimonial-card__text">"Amazing app! Got a cab from Amritsar to Chandigarh in seconds. The live map tracking on the Punjab road network is really impressive."</p><div class="testimonial-card__author"><div class="testimonial-card__avatar">G</div><div><div class="testimonial-card__name">Gurpreet Singh</div><div class="testimonial-card__location">📍 Amritsar, Punjab</div></div></div></div>
+      <div class="testimonial-card"><div class="testimonial-card__stars">★★★★★</div><p class="testimonial-card__text">"Affordable and super reliable. The ride sharing feature saved me over ₹200 on my Ludhiana to Patiala trip. Highly recommend!"</p><div class="testimonial-card__author"><div class="testimonial-card__avatar">P</div><div><div class="testimonial-card__name">Priya Mehta</div><div class="testimonial-card__location">📍 Ludhiana, Punjab</div></div></div></div>
+      <div class="testimonial-card"><div class="testimonial-card__stars">★★★★☆</div><p class="testimonial-card__text">"Great experience. The city search autocomplete makes it super easy to find your destination. The SUV cab was spacious and comfortable."</p><div class="testimonial-card__author"><div class="testimonial-card__avatar">R</div><div><div class="testimonial-card__name">Rajesh Kumar</div><div class="testimonial-card__location">📍 Patiala, Punjab</div></div></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ── FOOTER ──────────────────────────────────────────────── -->
+<footer class="footer">
+  <div class="footer__inner">
+    <div class="footer__grid">
+      <div>
+        <div class="footer__brand"><span class="footer__brand-icon">🚖</span> CabSystem</div>
+        <p class="footer__tagline">Smart cab booking for Punjab. Powered by Dijkstra's algorithm for optimal route dispatch, real-time driver tracking, and intelligent ride sharing.</p>
+        <div class="footer__social">
+          <a href="#" class="footer__social-link">𝕏</a>
+          <a href="#" class="footer__social-link">in</a>
+          <a href="#" class="footer__social-link">📷</a>
+        </div>
+      </div>
+      <div>
+        <div class="footer__col-title">Quick Links</div>
+        <a href="#" class="footer__link">Home</a>
+        <a href="./auth.html" class="footer__link">Book a Ride</a>
+        <a href="#features" class="footer__link">Features</a>
+        <a href="#about" class="footer__link">About Us</a>
+      </div>
+      <div>
+        <div class="footer__col-title">Services</div>
+        <a href="./auth.html" class="footer__link">Mini Cab</a>
+        <a href="./auth.html" class="footer__link">Sedan</a>
+        <a href="./auth.html" class="footer__link">SUV</a>
+        <a href="./auth.html" class="footer__link">Premium</a>
+        <a href="./auth.html" class="footer__link">Ride Sharing</a>
+      </div>
+      <div>
+        <div class="footer__col-title">Support</div>
+        <a href="#" class="footer__link">Help Center</a>
+        <a href="#" class="footer__link">Contact Us</a>
+        <a href="#" class="footer__link">Privacy Policy</a>
+        <a href="#" class="footer__link">Terms &amp; Conditions</a>
+      </div>
+    </div>
+    <div class="footer__bottom">
+      <div class="footer__copy">© 2024 CabSystem — DSA College Project · C++11 · Node.js · Punjab Road Network</div>
+      <div class="footer__bottom-links">
+        <a href="#" class="footer__bottom-link">Privacy</a>
+        <a href="#" class="footer__bottom-link">Terms</a>
+        <a href="#" class="footer__bottom-link">Cookies</a>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<script>
+  window.addEventListener('scroll', () => {
+    document.getElementById('navbar').classList.toggle('scrolled', window.scrollY > 20);
+  });
+  document.getElementById('hamburger').addEventListener('click', () => {
+    const links = document.getElementById('navLinks');
+    const open  = links.style.display === 'flex';
+    links.style.display     = open ? '' : 'flex';
+    links.style.flexDirection  = 'column';
+    links.style.position    = 'absolute';
+    links.style.top         = '64px';
+    links.style.left        = '0';
+    links.style.right       = '0';
+    links.style.background  = 'white';
+    links.style.padding     = '16px 20px';
+    links.style.borderBottom = '1px solid #E4E7EC';
+    links.style.zIndex      = '200';
+  });
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('fade-in-up'); observer.unobserve(e.target); } });
+  }, { threshold: 0.1 });
+  document.querySelectorAll('.feature-card, .cab-card, .testimonial-card, .hiw-step').forEach(el => observer.observe(el));
+</script>
+</body>
+</html>

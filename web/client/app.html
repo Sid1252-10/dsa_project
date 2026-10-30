@@ -7,7 +7,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/v3.0.1/mapbox-gl.css" />
   <link rel="stylesheet" href="./styles.css" />
+  <script src="https://api.mapbox.com/mapbox-gl-js/v3.0.1/mapbox-gl.js"></script>
 </head>
 <body>
 
@@ -253,9 +255,7 @@
             <div class="map-legend-item"><div class="legend-line legend-line--route"></div> Dispatched Route</div>
           </div>
         </div>
-        <div class="map-svg-wrap">
-          <svg id="mapSvg" viewBox="0 0 700 560" role="img" aria-label="Punjab city road network"></svg>
-        </div>
+        <div id="mapContainer" class="mapbox-container" role="region" aria-label="Interactive Punjab city map"></div>
         <div id="mapStatus" class="map-status">Select pickup and destination to highlight the shortest route on the map.</div>
       </div>
 
@@ -358,9 +358,7 @@
             <div class="map-legend-item"><div class="legend-line legend-line--route"></div> Trip Route</div>
           </div>
         </div>
-        <div class="map-svg-wrap">
-          <svg id="mapSvg2" viewBox="0 0 700 560" role="img" aria-label="Punjab city road network driver view"></svg>
-        </div>
+        <div id="mapContainer2" class="mapbox-container" role="region" aria-label="Interactive Punjab driver route map"></div>
         <div id="mapStatus2" class="map-status">Click "Show path" on any request to inspect the customer's route on the map.</div>
       </div>
     </div>

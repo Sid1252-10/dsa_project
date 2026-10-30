@@ -1,100 +1,68 @@
 #!/usr/bin/env bash
-# ==============================================================================
-# start.sh
-# Sets up virtual environment, installs requirements, and launches
-# both the Web UI server (frontend/API) and the backend simulator simultaneously.
-# ==============================================================================
+# Start the CabSystem web app/API and the Python CLI simulator.
 
-set -e
+set -euo pipefail
 
-# Navigate to script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-echo "======================================================="
-echo "   🚖 Cab Allocation System Startup Script"
-echo "======================================================="
-
-# 1. Detect working Python executable
-if python --version &>/dev/null; then
-    PYTHON_CMD="python"
-elif python3 --version &>/dev/null; then
-    PYTHON_CMD="python3"
-elif py -3 --version &>/dev/null; then
-    PYTHON_CMD="py -3"
+if command -v python3 >/dev/null 2>&1; then
+  PYTHON_CMD=(python3)
+elif command -v python >/dev/null 2>&1; then
+  PYTHON_CMD=(python)
+elif command -v py >/dev/null 2>&1; then
+  PYTHON_CMD=(py -3)
 else
-    echo "[ERROR] Python is not installed or not in PATH."
-    exit 1
+  echo "[ERROR] Python 3 is not installed or not on PATH."
+  exit 1
 fi
 
-echo "[1/4] Using Python: $($PYTHON_CMD --version)"
+echo "Using $(${PYTHON_CMD[@]} --version)"
 
-# 2. Setup virtual environment if not already present
-VENV_DIR="venv"
-if [ ! -d "$VENV_DIR" ]; then
-    echo "[2/4] Creating virtual environment in '$VENV_DIR'..."
-    "$PYTHON_CMD" -m venv "$VENV_DIR"
-else
-    echo "[2/4] Virtual environment found in '$VENV_DIR'."
+VENV_DIR="$SCRIPT_DIR/venv"
+if [[ ! -x "$VENV_DIR/bin/python" && ! -x "$VENV_DIR/Scripts/python.exe" ]]; then
+  echo "Creating virtual environment..."
+  "${PYTHON_CMD[@]}" -m venv "$VENV_DIR"
 fi
 
-# Activate virtual environment (handles Linux/macOS and Windows Git Bash)
-if [ -f "$VENV_DIR/Scripts/activate" ]; then
-    # Windows
-    # shellcheck disable=SC1091
-    source "$VENV_DIR/Scripts/activate"
-elif [ -f "$VENV_DIR/bin/activate" ]; then
-    # Linux / macOS
-    # shellcheck disable=SC1091
-    source "$VENV_DIR/bin/activate"
+if [[ -x "$VENV_DIR/bin/python" ]]; then
+  VENV_PYTHON="$VENV_DIR/bin/python"
 else
-    echo "[ERROR] Could not find virtual environment activation script."
-    exit 1
+  VENV_PYTHON="$VENV_DIR/Scripts/python.exe"
 fi
 
-# 3. Install requirements
-echo "[3/4] Installing dependencies from requirements.txt..."
-python -m pip install --quiet --upgrade pip
-python -m pip install --quiet -r requirements.txt
+echo "Installing Python dependencies..."
+"$VENV_PYTHON" -m pip install --quiet --upgrade pip
+"$VENV_PYTHON" -m pip install --quiet -r requirements.txt
 
-# 4. Start servers
-echo "[4/4] Starting backend and frontend simultaneously..."
+export PORT=5174
+"$VENV_PYTHON" web/server/server.py &
+SERVER_PID=$!
 
-# Clean up background web server when this script exits
 cleanup() {
-    echo ""
-    if [ -n "${SERVER_PID:-}" ]; then
-        echo "Shutting down web server (PID $SERVER_PID)..."
-        kill "$SERVER_PID" 2>/dev/null || true
-        wait "$SERVER_PID" 2>/dev/null || true
-    fi
-    echo "Goodbye!"
+  echo
+  echo "Stopping CabSystem web server..."
+  kill "$SERVER_PID" 2>/dev/null || true
+  wait "$SERVER_PID" 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
 
-# Start Web UI Server (serves frontend client + Punjab map API) in background
-export PORT=5174
-python web/server/server.py &
-SERVER_PID=$!
+WEB_URL="http://localhost:5174/app.html?role=passenger"
+for _ in {1..20}; do
+  if curl --silent --fail "http://localhost:5174/api/graph" >/dev/null 2>&1; then
+    break
+  fi
+  sleep 0.25
+done
 
-sleep 1
-
-WEB_URL="http://localhost:5174"
-echo ""
-echo "-------------------------------------------------------"
-echo "  🌐 Web UI (Frontend + API): $WEB_URL"
-echo "-------------------------------------------------------"
-
-# Try opening the browser automatically
-if command -v start &>/dev/null; then
-    start "$WEB_URL" 2>/dev/null || true
-elif command -v cmd.exe &>/dev/null; then
-    cmd.exe /c start "$WEB_URL" 2>/dev/null || true
-elif command -v xdg-open &>/dev/null; then
-    xdg-open "$WEB_URL" 2>/dev/null || true
-elif command -v open &>/dev/null; then
-    open "$WEB_URL" 2>/dev/null || true
+echo "CabSystem dashboard: $WEB_URL"
+if command -v xdg-open >/dev/null 2>&1; then
+  xdg-open "$WEB_URL" >/dev/null 2>&1 || true
+elif command -v open >/dev/null 2>&1; then
+  open "$WEB_URL" >/dev/null 2>&1 || true
+elif command -v cmd.exe >/dev/null 2>&1; then
+  cmd.exe /c start "" "$WEB_URL" >/dev/null 2>&1 || true
 fi
 
-# Start the interactive CLI Backend Simulator in the foreground
-python main.py
+echo "Starting the Python CLI simulator. Press Ctrl+C to stop both."
+"$VENV_PYTHON" main.py

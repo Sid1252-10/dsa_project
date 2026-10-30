@@ -1,13 +1,11 @@
 @echo off
 setlocal
-
 cd /d "%~dp0"
 
 echo =======================================================
-echo    🚖 Cab Allocation System Startup Script (Windows)
+echo    CabSystem Startup (Windows)
 echo =======================================================
 
-:: 1. Detect Python executable
 set "PYTHON_CMD="
 py -3 --version >nul 2>&1 && set "PYTHON_CMD=py -3"
 if not defined PYTHON_CMD (
@@ -16,57 +14,49 @@ if not defined PYTHON_CMD (
 if not defined PYTHON_CMD (
     python3 --version >nul 2>&1 && set "PYTHON_CMD=python3"
 )
-
 if not defined PYTHON_CMD (
-    echo [ERROR] Python is not installed or not in PATH.
+    echo [ERROR] Python 3 is not installed or not on PATH.
     pause
     exit /b 1
 )
 
 for /f "delims=" %%v in ('%PYTHON_CMD% --version 2^>^&1') do set "PY_VER=%%v"
-echo [1/4] Using Python: %PY_VER%
+echo Using %PY_VER%
 
-:: 2. Setup virtual environment
-set "VENV_DIR=venv"
+set "VENV_DIR=%~dp0venv"
 if not exist "%VENV_DIR%\Scripts\python.exe" (
-    echo [2/4] Creating virtual environment in '%VENV_DIR%'...
+    echo Creating virtual environment...
     %PYTHON_CMD% -m venv "%VENV_DIR%"
-) else (
-    echo [2/4] Virtual environment found in '%VENV_DIR%'.
+    if errorlevel 1 goto :error
 )
-
 set "VENV_PYTHON=%VENV_DIR%\Scripts\python.exe"
 
-:: 3. Install requirements
-echo [3/4] Installing dependencies from requirements.txt...
+echo Installing Python dependencies...
 "%VENV_PYTHON%" -m pip install --quiet --upgrade pip
+if errorlevel 1 goto :error
 "%VENV_PYTHON%" -m pip install --quiet -r requirements.txt
+if errorlevel 1 goto :error
 
-:: 4. Start servers
-echo [4/4] Starting backend and frontend simultaneously...
-
-set PORT=5174
-set WEB_URL=http://localhost:5174
-
-:: Start Web UI Server in background window titled WebUIServer
-start "WebUIServer" /min "%VENV_PYTHON%" web\server\server.py
+set "PORT=5174"
+set "WEB_URL=http://localhost:5174/app.html?role=passenger"
+start "CabSystem Web Server" /min "%VENV_PYTHON%" "%~dp0web\server\server.py"
+if errorlevel 1 goto :error
 
 timeout /t 2 /nobreak >nul
-
-echo.
-echo -------------------------------------------------------
-echo   🌐 Web UI (Frontend + API): %WEB_URL%
-echo -------------------------------------------------------
-
-:: Open default browser
+echo CabSystem dashboard: %WEB_URL%
 start "" "%WEB_URL%"
 
-:: Start interactive CLI Backend Simulator in foreground
+echo Starting the Python CLI simulator. Close it or press Ctrl+C to stop both.
 "%VENV_PYTHON%" main.py
 
-:: Cleanup background server upon exit
 echo.
-echo Shutting down web server...
-taskkill /fi "WINDOWTITLE eq WebUIServer*" /t /f >nul 2>&1
-echo Goodbye!
+echo Stopping CabSystem web server...
+taskkill /fi "WINDOWTITLE eq CabSystem Web Server*" /t /f >nul 2>&1
+echo Goodbye.
+exit /b 0
 
+:error
+echo [ERROR] CabSystem startup failed. Check Python and pip setup.
+taskkill /fi "WINDOWTITLE eq CabSystem Web Server*" /t /f >nul 2>&1
+pause
+exit /b 1

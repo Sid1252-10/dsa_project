@@ -161,10 +161,11 @@ def shortest_path(from_id: str, to_id: str):
     return {"path": path, "distance": d}
 
 
-def compute_solo_fare(distance: int) -> int:
-    base = 40
-    per_unit = 15
-    return round(base + per_unit * distance)
+def compute_solo_fare(distance: int, num_persons: int = 1) -> int:
+    base = 55
+    per_km = 20
+    persons = max(1, min(6, round(float(num_persons or 1))))
+    return round((base + per_km * distance) * (1 + (persons - 1) * 0.6))
 
 
 def compute_shared_pricing(solo_fare: int, riders: int):
@@ -230,7 +231,7 @@ def snapshot():
     }
 
 
-def create_ride_request(user_name: str, from_city_id: str, to_city_id: str, wants_sharing: bool):
+def create_ride_request(user_name: str, from_city_id: str, to_city_id: str, wants_sharing: bool, num_persons: int = 1):
     if from_city_id == to_city_id:
         return {"ok": False, "error": "From and To cannot be the same city."}
     route = shortest_path(from_city_id, to_city_id)
@@ -243,10 +244,11 @@ def create_ride_request(user_name: str, from_city_id: str, to_city_id: str, want
         "fromCityId": from_city_id,
         "toCityId": to_city_id,
         "wantsSharing": bool(wants_sharing),
+        "numPersons": max(1, min(6, round(float(num_persons or 1)))),
         "status": "pending_driver",
         "createdAt": _now_iso(),
         "route": route,
-        "soloFare": compute_solo_fare(route["distance"]),
+        "soloFare": compute_solo_fare(route["distance"], num_persons),
         "assignedDriverId": None,
         "rideId": None,
     }
@@ -550,10 +552,11 @@ class CabApiHandler(SimpleHTTPRequestHandler):
             from_city = body.get("fromCityId")
             to_city = body.get("toCityId")
             wants_sharing = body.get("wantsSharing", False)
+            num_persons = body.get("numPersons", 1)
             if not user_name or not from_city or not to_city:
                 self._send_json({"ok": False, "error": "userName, fromCityId, toCityId are required."}, 400)
                 return
-            res = create_ride_request(user_name, from_city, to_city, wants_sharing)
+            res = create_ride_request(user_name, from_city, to_city, wants_sharing, num_persons)
             self._send_json(res, 200 if res.get("ok") else 400)
             return
         elif path == "/api/driver/respond":

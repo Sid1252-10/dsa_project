@@ -7,17 +7,49 @@
 - Active ride tracking
 
 ## Tech Stack
-- C++ (Backend logic)
-- HTML + React (Frontend UI)
+- Python / C++ (Backend logic)
+- HTML + JavaScript (Frontend UI)
 
 ## How to Run
 
-### Backend:
-g++ main.cpp cab_system.cpp dispatch.cpp driver.cpp -o app
-./app
+### One-Click Startup (Both Frontend & Backend):
+```bash
+# On Linux, macOS, or Windows (Git Bash):
+chmod +x start.sh   # (first time only)
+./start.sh
+```
+This script automatically:
+1. Creates a Python virtual environment (`venv`).
+2. Installs all dependencies from `requirements.txt`.
+3. Starts the Web UI server (frontend + map API at `http://localhost:5174`) in the background.
+4. Opens the browser and launches the interactive CLI simulator in the foreground.
+5. Cleanly stops the background server when you exit.
 
-### Frontend:
-Open index.html in browser
+### Backend Only (Python):
+```bash
+# Run modular Python backend:
+python main.py
+
+# Or run standalone single-file backend:
+python cab_system.py
+```
+
+### Backend (C++):
+```bash
+g++ -std=c++11 -o cab_system main.cpp driver.cpp dispatch.cpp
+./cab_system
+```
+
+### Frontend / Web UI:
+```bash
+# Option A: Run with Node.js
+cd web
+npm install
+npm run dev
+
+# Option B: Run with Python server
+python web/server/server.py
+```
 
 # 🚖 Queue-Based Cab Allocation & Ride Sharing System
 
@@ -56,42 +88,46 @@ This repo also includes a **web UI** (User view + Map + Driver view) with ride s
 
 ```
 dsa_project/
-├── types.h            # Shared structs, constants, global externs, inline utilities, function prototypes
-├── main.cpp           # Global variable definitions, interactive menu, demo data, main()
-├── driver.cpp         # Driver registration, lookup, active ride tracking, ride completion, status display
-├── dispatch.cpp       # Ride-share matching, driver assignment, queue dispatch, cancellation
-├── cab_system.cpp     # (Legacy) single-file version of the same simulator
-├── web/               # Web UI + API (Punjab map + user/driver panels)
-│   ├── server/
-│   └── client/
+├── cab_types.py / types.py  # (Python) Shared dataclasses, constants, globals, utilities
+├── driver.py                # (Python) Driver registration, lookup, active ride tracking, completion
+├── dispatch.py              # (Python) Ride-share matching, driver assignment, queue dispatch
+├── main.py                  # (Python) Interactive menu loop, demo seed data, queue status
+├── cab_system.py            # (Python) Standalone single-file simulator
+├── types.h                  # (C++) Shared structs, constants, global externs, prototypes
+├── main.cpp                 # (C++) Global variable definitions, interactive menu, main()
+├── driver.cpp               # (C++) Driver registration, lookup, ride completion, dashboards
+├── dispatch.cpp             # (C++) Ride-share matching, driver assignment, cancellation
+├── cab_system.cpp           # (C++) (Legacy) single-file version of the simulator
+├── web/                     # Web UI + API (Punjab map + user/driver panels)
+│   ├── server/              # index.js (Node.js) & server.py (Python)
+│   └── client/              # Frontend HTML, CSS, app.js
 └── README.md
 ```
 
 ### File Responsibilities
 
-#### `types.h`
-Single header included by all `.cpp` files. Defines:
-- **Structs**: `Location`, `RideRequest`, `Driver`, `ActiveRide`
+#### `cab_types.py` / `types.py` & `types.h`
+Defines:
+- **Structs / Classes**: `Location`, `RideRequest`, `Driver`, `ActiveRide`
 - **Constants**: `MAX_DRIVERS = 20`, `SHARE_THRESHOLD = 3`, `DRIVER_IDLE / DRIVER_ON_RIDE`
-- **Extern globals**: `request_queue`, `waiting_queue`, `driver_pool`, `active_rides`, counters
-- **Inline utilities**: `manhattan_distance()`, `print_separator()`
-- **All function prototypes** (avoids circular include issues)
+- **Globals**: `request_queue`, `waiting_queue`, `driver_pool`, `active_rides`, stats counters
+- **Utilities**: `manhattan_distance()`, `print_separator()`
 
-#### `driver.cpp`
+#### `driver.py` & `driver.cpp`
 - `register_driver()` — Adds a new driver to the pool
 - `find_nearest_driver()` — Greedy O(n) scan for the closest idle driver
 - `complete_ride()` — Marks driver idle, increments stats, triggers waiting-queue dispatch
 - `display_driver_status()` / `display_active_rides()` — Console dashboards
 
-#### `dispatch.cpp`
+#### `dispatch.py` & `dispatch.cpp`
 - `try_ride_share()` — Scans the waiting queue for a compatible share partner
 - `assign_driver_to_request()` — Core assignment; pushes to waiting queue if no driver free
 - `submit_and_dispatch()` — Full request lifecycle: validate → share-match → assign
 - `process_pending_queue()` — Batch processes the `request_queue`
 - `cancel_waiting_request()` — Removes a specific request from the waiting queue
 
-#### `main.cpp`
-- Global variable definitions (allocated here, declared `extern` in `types.h`)
+#### `main.py` & `main.cpp`
+- Global variable definitions / state initialization
 - `display_queue_status()` — Queue sizes + aggregate stats
 - `load_demo_data()` — Seeds 3 drivers and 5 ride requests for quick testing
 - Interactive menu loop
@@ -101,9 +137,20 @@ Single header included by all `.cpp` files. Defines:
 ## 🚀 Getting Started
 
 ### Prerequisites
-- A C++11 (or later) compiler: `g++`, `clang++`, or MSVC
+- **Python**: Python 3.8+ (no third-party dependencies required for backend simulator or python web server)
+- **C++ (optional)**: A C++11 (or later) compiler: `g++`, `clang++`, or MSVC
 
-### Build & Run
+### Run with Python
+
+```bash
+# Modular Python version (driver.py, dispatch.py, main.py, cab_types.py)
+python main.py
+
+# Standalone single-file Python version (cab_system.py)
+python cab_system.py
+```
+
+### Build & Run with C++
 
 **Linux / macOS / WSL**
 ```bash

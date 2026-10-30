@@ -4,7 +4,9 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Punjab Cab System</title>
+    <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/v3.0.1/mapbox-gl.css" />
     <link rel="stylesheet" href="./styles.css" />
+    <script src="https://api.mapbox.com/mapbox-gl-js/v3.0.1/mapbox-gl.js"></script>
   </head>
   <body>
     <div class="app">
@@ -86,7 +88,7 @@
             </div>
           </div>
           <div class="map__canvas">
-            <svg id="mapSvg" viewBox="0 0 700 560" role="img" aria-label="Punjab city road network"></svg>
+            <div id="mapContainer"></div>
           </div>
           <div id="mapStatus" class="map__status muted"></div>
         </section>

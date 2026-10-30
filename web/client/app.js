@@ -1,6 +1,6 @@
 // ═══════════════════════════════════════════════════════════
-// CabSystem — Complete App Logic
-// Preserves ALL original API endpoints exactly.
+// CabSystem — Complete Client App Logic
+// Native SVG Map + Smart Auto-Recommend City Search + Full DSA Flow
 // ═══════════════════════════════════════════════════════════
 
 const $ = (id) => document.getElementById(id);
@@ -108,7 +108,6 @@ const VEHICLE_CONFIG = {
   }
 };
 
-// Driver fleet model associations
 const DRIVER_VEHICLES = {
   d1: { model: 'Sedan (Dzire)', plate: 'PB-10-AB-1234', type: 'sedan', icon: '🚙' },
   d2: { model: 'Mini (Swift)', plate: 'PB-08-CD-5678', type: 'mini', icon: '🚗' },
@@ -116,7 +115,7 @@ const DRIVER_VEHICLES = {
   d4: { model: 'Premium (Camry)', plate: 'PB-02-GH-3456', type: 'premium', icon: '⭐' }
 };
 
-// Persistent vehicle store for requests
+// ── Persistent Request Vehicle Store ──────────────────────
 function getRequestVehicle(requestId) {
   try {
     const map = JSON.parse(localStorage.getItem('cabsystem_request_vehicles') || '{}');
@@ -134,7 +133,7 @@ function saveRequestVehicle(requestId, vehicleType) {
   } catch (_) {}
 }
 
-// ── API helpers (PRESERVED EXACTLY) ───────────────────────
+// ── API Helpers (Preserved Exactly) ───────────────────────
 async function apiGet(url) {
   const r = await fetch(url);
   const j = await r.json();
@@ -164,19 +163,6 @@ function routeText(route) {
   return route.path.map(cityName).join(' → ');
 }
 
-function setOptions(selectEl, cities) {
-  if (!selectEl) return;
-  const prev = selectEl.value;
-  selectEl.innerHTML = '';
-  for (const c of cities) {
-    const opt = document.createElement('option');
-    opt.value = c.id;
-    opt.textContent = `${c.name}${c.kind === 'major' ? ' ★' : ''}`;
-    selectEl.appendChild(opt);
-  }
-  if (prev) selectEl.value = prev;
-}
-
 function formatTime(iso) {
   if (!iso) return '';
   return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -184,9 +170,9 @@ function formatTime(iso) {
 
 function statusBadge(status) {
   const map = {
-    pending_driver: ['badge-pending',   '⏳ Pending'],
-    accepted:       ['badge-active',    '✅ Active'],
-    completed:      ['badge-completed', '🏁 Done'],
+    pending_driver: ['badge-pending',   '⏳ Pending Driver'],
+    accepted:       ['badge-active',    '✅ Active Ride'],
+    completed:      ['badge-completed', '🏁 Completed'],
     declined:       ['badge-declined',  '❌ Declined'],
     cancelled:      ['badge-declined',  '🚫 Cancelled'],
     expired:        ['badge-expired',   '⌛ Expired'],
@@ -239,13 +225,12 @@ function logout() {
   window.location.href = './auth.html';
 }
 
-// ── Vehicle selection ─────────────────────────────────────
+// ── Vehicle Selection ─────────────────────────────────────
 function selectVehicle(type) {
   selectedVehicle = type;
   const hiddenInput = $('selectedVehicleType');
   if (hiddenInput) hiddenInput.value = type;
 
-  // Visual card active state
   document.querySelectorAll('.vehicle-card').forEach(card => {
     card.classList.toggle('active', card.dataset.vehicle === type);
   });
@@ -253,27 +238,26 @@ function selectVehicle(type) {
   const config = VEHICLE_CONFIG[type];
   if (!config) return;
 
-  // Auto-toggle sharing if shared category clicked
   const sharingCheck = $('wantsSharing');
-  if (sharingCheck) {
-    if (type === 'shared') {
-      sharingCheck.checked = true;
-    }
+  if (sharingCheck && type === 'shared') {
+    sharingCheck.checked = true;
   }
 
-  // Adjust passenger capacity if needed
   const numPersonsSelect = $('numPersons');
   if (numPersonsSelect && parseInt(numPersonsSelect.value, 10) > config.capacity) {
     numPersonsSelect.value = String(config.capacity);
   }
+
+  // Update live preview if route is active
+  onRouteEndpointsChanged();
 }
 
-// ── City Search & Auto-Recommend ─────────────────────────
+// ── City Search & Auto-Recommend Autocomplete ─────────────
 function setupCityAutocomplete(searchInputId, hiddenSelectId, dropdownId, searchBtnId) {
-  const input       = $(searchInputId);
-  const hiddenSelect= $(hiddenSelectId);
-  const dropdown    = $(dropdownId);
-  const searchBtn   = $(searchBtnId);
+  const input        = $(searchInputId);
+  const hiddenSelect = $(hiddenSelectId);
+  const dropdown     = $(dropdownId);
+  const searchBtn    = $(searchBtnId);
 
   if (!input || !dropdown) return;
 
@@ -288,18 +272,33 @@ function setupCityAutocomplete(searchInputId, hiddenSelectId, dropdownId, search
       return c.name.toLowerCase().includes(cleanQuery) || c.id.toLowerCase().includes(cleanQuery);
     });
 
+    filtered.sort((a, b) => {
+      if (a.kind === 'major' && b.kind !== 'major') return -1;
+      if (a.kind !== 'major' && b.kind === 'major') return 1;
+      return a.name.localeCompare(b.name);
+    });
+
     if (!filtered.length) {
       dropdown.innerHTML = `
-        <div class="autocomplete-header">Punjab Road Network</div>
+        <div class="autocomplete-header">
+          <span>Punjab Cities</span>
+          <span style="cursor:pointer;" onclick="this.closest('.autocomplete-dropdown').classList.remove('open')">✕</span>
+        </div>
         <div style="padding:12px;font-size:12px;color:var(--text-muted);text-align:center;">
-          No matching cities found in Punjab for "<strong>${escapeHtml(query)}</strong>"
+          No cities found matching "<strong>${escapeHtml(query)}</strong>"
         </div>
       `;
       dropdown.classList.add('open');
       return;
     }
 
-    let html = `<div class="autocomplete-header"><span>Recommended Cities (${filtered.length})</span><span>Select to route</span></div>`;
+    let html = `
+      <div class="autocomplete-header">
+        <span>Available Punjab Cities (${filtered.length})</span>
+        <span style="cursor:pointer;font-weight:bold" onclick="this.closest('.autocomplete-dropdown').classList.remove('open')">✕ Close</span>
+      </div>
+    `;
+
     filtered.forEach((city, idx) => {
       let displayName = city.name;
       if (cleanQuery) {
@@ -316,7 +315,7 @@ function setupCityAutocomplete(searchInputId, hiddenSelectId, dropdownId, search
             <span class="autocomplete-item__icon">${city.kind === 'major' ? '🏙️' : '📍'}</span>
             <div>
               <div class="autocomplete-item__name">${displayName}</div>
-              <div class="autocomplete-item__sub">Punjab Network Route Node</div>
+              <div class="autocomplete-item__sub">Punjab Road Network Node</div>
             </div>
           </div>
           <div>${badge}</div>
@@ -329,35 +328,51 @@ function setupCityAutocomplete(searchInputId, hiddenSelectId, dropdownId, search
 
     // Attach click listeners to suggestions
     dropdown.querySelectorAll('.autocomplete-item').forEach(item => {
-      item.addEventListener('click', (e) => {
-        e.stopPropagation();
+      item.addEventListener('mousedown', (e) => {
+        e.preventDefault(); // prevent blur
         chooseCity(item.dataset.cityId, item.dataset.cityName);
       });
     });
   }
 
-  function chooseCity(cityId, cityName) {
+  function chooseCity(cityId, cName) {
     if (!cityId) return;
     const city = graph?.cities?.find(c => c.id === cityId);
     const star = city?.kind === 'major' ? ' ★' : '';
-    input.value = `${cityName || city?.name || cityId}${star}`;
+    input.value = `${cName || city?.name || cityId}${star}`;
     if (hiddenSelect) {
       hiddenSelect.value = cityId;
     }
     input.dataset.selectedCityId = cityId;
     dropdown.classList.remove('open');
     activeIndex = -1;
+
+    // Trigger map update & route calculation
+    onRouteEndpointsChanged();
   }
 
+  // Focus opens recommendations
   input.addEventListener('focus', () => {
     renderSuggestions(input.value);
   });
 
+  // Typing filters recommendations
   input.addEventListener('input', () => {
     activeIndex = -1;
     renderSuggestions(input.value);
   });
 
+  // Search button opens recommendations
+  if (searchBtn) {
+    searchBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      input.focus();
+      renderSuggestions('');
+    });
+  }
+
+  // Keyboard navigation
   input.addEventListener('keydown', (e) => {
     const items = dropdown.querySelectorAll('.autocomplete-item');
     if (!dropdown.classList.contains('open') || !items.length) {
@@ -393,28 +408,19 @@ function setupCityAutocomplete(searchInputId, hiddenSelectId, dropdownId, search
     if (items[activeIndex]) items[activeIndex].scrollIntoView({ block: 'nearest' });
   }
 
-  if (searchBtn) {
-    searchBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      input.focus();
-      renderSuggestions(input.value);
-    });
-  }
-
-  // Click outside closes autocomplete
+  // Close when clicking outside
   document.addEventListener('click', (e) => {
-    if (!input.contains(e.target) && !dropdown.contains(e.target)) {
+    if (!input.contains(e.target) && !dropdown.contains(e.target) && (!searchBtn || !searchBtn.contains(e.target))) {
       dropdown.classList.remove('open');
     }
   });
 
-  // Store choose function on input element for quick-picks
   input.chooseCity = chooseCity;
 }
 
 function quickSelectCity(fieldBaseId, cityId) {
-  const searchInput = $(`${fieldBaseId}Search`);
-  const hiddenSelect= $(fieldBaseId);
+  const searchInput  = $(`${fieldBaseId}Search`);
+  const hiddenSelect = $(fieldBaseId);
   const city = graph?.cities?.find(c => c.id === cityId);
   if (!city) return;
 
@@ -423,15 +429,59 @@ function quickSelectCity(fieldBaseId, cityId) {
   } else {
     if (searchInput) searchInput.value = `${city.name}${city.kind === 'major' ? ' ★' : ''}`;
     if (hiddenSelect) hiddenSelect.value = city.id;
+    onRouteEndpointsChanged();
   }
 }
 
-function escapeRegex(string) {
-  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+// ── Interactive Map Click Handler ─────────────────────────
+function onMapCityClicked(cityId, cName) {
+  const fromSelect = $('fromCity');
+  const toSelect   = $('toCity');
+  const fromInput  = $('fromCitySearch');
+  const toInput    = $('toCitySearch');
+
+  if (!fromSelect || !toSelect) return;
+
+  // If pickup is empty or user is setting pickup first
+  if (!fromSelect.value) {
+    quickSelectCity('fromCity', cityId);
+  } else if (!toSelect.value && fromSelect.value !== cityId) {
+    quickSelectCity('toCity', cityId);
+  } else {
+    // Both already set: update destination
+    if (fromSelect.value === cityId) {
+      quickSelectCity('fromCity', cityId);
+    } else {
+      quickSelectCity('toCity', cityId);
+    }
+  }
 }
 
-function escapeHtml(str) {
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+// ── Real-Time Route Preview on Map ────────────────────────
+function onRouteEndpointsChanged() {
+  const fromId = $('fromCity')?.value;
+  const toId   = $('toCity')?.value;
+
+  if (fromId && toId && fromId !== toId) {
+    const route = findShortestPath(fromId, toId);
+    if (route) {
+      selectedRoute = route;
+      const vCfg = VEHICLE_CONFIG[selectedVehicle] || VEHICLE_CONFIG.sedan;
+      const baseFare = Math.round((55 + 20 * route.distance) * vCfg.multiplier);
+      const mapStatus = $('mapStatus');
+      if (mapStatus) {
+        mapStatus.innerHTML = `
+          <strong>Optimal Route (Dijkstra):</strong> ${routeText(route)} ·
+          <strong>${route.distance} km</strong> ·
+          ${vCfg.icon} <strong>Est. Fare: ₹${baseFare}</strong>
+        `;
+      }
+    }
+  } else {
+    selectedRoute = null;
+  }
+
+  drawMap('mapSvg', 'mapStatus');
 }
 
 async function initMap() {
@@ -528,7 +578,6 @@ function drawMap() {
 
   // 2. Selected Route Highlight
   if (selectedRoute?.path?.length >= 2) {
-    const routeFeatures = [];
     for (let i = 0; i < selectedRoute.path.length - 1; i++) {
       const a = selectedRoute.path[i];
       const b = selectedRoute.path[i + 1];
@@ -595,14 +644,12 @@ function drawMap() {
   updateCityLabelVisibility();
 
   const statusEl = $(statusId);
-  if (statusEl) {
-    statusEl.textContent = selectedRoute?.path?.length
-      ? `Dispatched Route: ${routeText(selectedRoute)} — ${selectedRoute.distance} km`
-      : 'Select pickup & destination to highlight shortest path on the map.';
+  if (statusEl && !selectedRoute?.path?.length) {
+    statusEl.textContent = 'Click any city on the map or search above to select pickup & destination.';
   }
 }
 
-// ── Countdown ticker ──────────────────────────────────────
+// ── Countdown Ticker ──────────────────────────────────────
 function tickCountdowns() {
   const now = Date.now();
   document.querySelectorAll('[data-complete-at]').forEach((el) => {
@@ -618,7 +665,6 @@ function tickCountdowns() {
     }
   });
 
-  // Manager countdown badges
   document.querySelectorAll('.mgr-countdown').forEach((el) => {
     const completeAt = el.dataset.completeAt;
     if (!completeAt) return;
@@ -629,7 +675,7 @@ function tickCountdowns() {
 }
 
 // ═══════════════════════════════════════════════════════════
-//  PASSENGER SCREEN
+//  PASSENGER WORKFLOW
 // ═══════════════════════════════════════════════════════════
 
 function renderQueues() {
@@ -779,12 +825,30 @@ function shareCandidateCard(candidate, requestId) {
 
 async function submitRide() {
   const userName     = $('userName').value.trim();
-  const fromCityId   = $('fromCity').value;
-  const toCityId     = $('toCity').value;
+  let fromCityId     = $('fromCity')?.value;
+  let toCityId       = $('toCity')?.value;
   const wantsSharing = $('wantsSharing').checked;
   const numPersons   = parseInt($('numPersons').value, 10) || 1;
   const vType        = selectedVehicle || 'sedan';
   const vCfg         = VEHICLE_CONFIG[vType] || VEHICLE_CONFIG.sedan;
+
+  // Fallback: If user typed in search input directly without clicking dropdown
+  if (!fromCityId && $('fromCitySearch')?.value) {
+    const raw = $('fromCitySearch').value.replace(/★/g, '').trim().toLowerCase();
+    const match = graph?.cities?.find(c => c.name.toLowerCase() === raw || c.id.toLowerCase() === raw || c.name.toLowerCase().startsWith(raw));
+    if (match) {
+      fromCityId = match.id;
+      if ($('fromCity')) $('fromCity').value = match.id;
+    }
+  }
+  if (!toCityId && $('toCitySearch')?.value) {
+    const raw = $('toCitySearch').value.replace(/★/g, '').trim().toLowerCase();
+    const match = graph?.cities?.find(c => c.name.toLowerCase() === raw || c.id.toLowerCase() === raw || c.name.toLowerCase().startsWith(raw));
+    if (match) {
+      toCityId = match.id;
+      if ($('toCity')) $('toCity').value = match.id;
+    }
+  }
 
   if (!userName) {
     alert('Please enter your full name.');
@@ -811,13 +875,13 @@ async function submitRide() {
     lastRequestId = req.id;
     selectedRoute = req.route;
 
-    // Save selected vehicle type for this request
+    // Save vehicle type for this request
     saveRequestVehicle(req.id, vType);
 
-    // Calculate vehicle-adjusted fare for display
+    // Calculate vehicle-adjusted fare
     const calculatedFare = Math.round(req.soloFare * vCfg.multiplier);
 
-    // Show result
+    // Show result card
     const resultEl = $('passengerResult');
     resultEl.className = '';
     resultEl.innerHTML = `
@@ -835,7 +899,7 @@ async function submitRide() {
           <div class="result-pill fare">💰 ₹${calculatedFare} (Estimated)</div>
         </div>
         <div class="muted" style="margin-top:8px">
-          ${vCfg.icon} Assigned Vehicle Type: <strong>${vCfg.name}</strong> (${vCfg.model}) · Licence Plate: <strong>${vCfg.plate}</strong>
+          ${vCfg.icon} Assigned Vehicle: <strong>${vCfg.name}</strong> (${vCfg.model}) · Licence Plate: <strong>${vCfg.plate}</strong>
         </div>
         <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
           ${wantsSharing ? `<button class="btn btn-secondary btn-sm" onclick="showShareSection()">🤝 Find Share Rides</button>` : ''}
@@ -850,7 +914,11 @@ async function submitRide() {
 
     await refreshAll();
   } catch (err) {
-    $('passengerResult').innerHTML = `<div class="result-card" style="background:var(--error-bg);border-color:rgba(240,68,56,0.3)"><div style="color:var(--error);font-weight:600">⚠️ ${err.message}</div></div>`;
+    $('passengerResult').innerHTML = `
+      <div class="result-card" style="background:var(--error-bg);border-color:rgba(240,68,56,0.3)">
+        <div style="color:var(--error);font-weight:600">⚠️ ${err.message}</div>
+      </div>
+    `;
   } finally {
     btn.disabled = false;
     btn.textContent = '🚖 Confirm & Dispatch Cab';
@@ -872,7 +940,7 @@ function resetPassengerForm() {
 }
 
 // ═══════════════════════════════════════════════════════════
-//  DRIVER SCREEN
+//  DRIVER WORKFLOW
 // ═══════════════════════════════════════════════════════════
 
 function renderDriverSelect() {
@@ -972,7 +1040,7 @@ function renderDriverView() {
     }
   }
 
-  // Notifications
+  // Driver notifications
   const nContainer = $('driverNotifications');
   if (!nContainer) return;
   nContainer.innerHTML = '';
@@ -1000,7 +1068,7 @@ function renderDriverView() {
 }
 
 // ═══════════════════════════════════════════════════════════
-//  MANAGER SCREEN
+//  MANAGER WORKFLOW
 // ═══════════════════════════════════════════════════════════
 
 function renderManagerStats() {
@@ -1142,6 +1210,32 @@ async function confirmReset() {
 //  SHARED REFRESH
 // ═══════════════════════════════════════════════════════════
 
+function setOptions(select, cities, includeBlank = false) {
+  if (!select || !cities) return;
+  const current = select.value;
+  // If already populated with options, preserve selection
+  if (select.children.length > 0) {
+    if (current) select.value = current;
+    return;
+  }
+  select.innerHTML = '';
+  if (includeBlank) {
+    const emptyOpt = document.createElement('option');
+    emptyOpt.value = '';
+    emptyOpt.textContent = '-- Select City --';
+    select.appendChild(emptyOpt);
+  }
+  for (const c of cities) {
+    const opt = document.createElement('option');
+    opt.value = c.id;
+    opt.textContent = `${c.name}${c.kind === 'major' ? ' ★' : ''}`;
+    select.appendChild(opt);
+  }
+  if (current) {
+    select.value = current;
+  }
+}
+
 async function refreshAll() {
   // ── PRESERVED API CALLS ──────────────────────────────
   graph    = await apiGet('/api/graph');
@@ -1153,21 +1247,17 @@ async function refreshAll() {
 
   // Populate city selects
   if (graph?.cities) {
-    setOptions($('fromCity'),      graph.cities);
-    setOptions($('toCity'),        graph.cities);
-    setOptions($('shareFromCity'), graph.cities);
-    setOptions($('shareToCity'),   graph.cities);
+    setOptions($('fromCity'),      graph.cities, true);
+    setOptions($('toCity'),        graph.cities, true);
+    setOptions($('shareFromCity'), graph.cities, false);
+    setOptions($('shareToCity'),   graph.cities, false);
 
-    // Default pickup/drop search values if empty
-    const fromInput = $('fromCitySearch');
-    const toInput   = $('toCitySearch');
-    if (fromInput && !fromInput.value && $('fromCity')?.value) {
-      const c = graph.cities.find(x => x.id === $('fromCity').value);
-      if (c) fromInput.value = `${c.name}${c.kind === 'major' ? ' ★' : ''}`;
+    // Initial default pickup & destination if empty
+    if (!$('fromCity').value && !$('fromCitySearch').value) {
+      quickSelectCity('fromCity', 'amritsar');
     }
-    if (toInput && !toInput.value && $('toCity')?.value) {
-      const c = graph.cities.find(x => x.id === $('toCity').value);
-      if (c) toInput.value = `${c.name}${c.kind === 'major' ? ' ★' : ''}`;
+    if (!$('toCity').value && !$('toCitySearch').value) {
+      quickSelectCity('toCity', 'chandigarh');
     }
   }
 
@@ -1196,10 +1286,10 @@ function wireEvents() {
   setupCityAutocomplete('fromCitySearch', 'fromCity', 'fromCityDropdown', 'fromCitySearchBtn');
   setupCityAutocomplete('toCitySearch', 'toCity', 'toCityDropdown', 'toCitySearchBtn');
 
-  // Submit ride
+  // Submit ride button
   $('submitRide')?.addEventListener('click', submitRide);
 
-  // Swap cities
+  // Swap cities button
   $('swapBtn')?.addEventListener('click', () => {
     const fromInput = $('fromCitySearch');
     const toInput   = $('toCitySearch');
@@ -1233,6 +1323,7 @@ function wireEvents() {
     } catch (err) {
       $("userRequestResult").textContent = err.message;
     }
+    onRouteEndpointsChanged();
   });
 
   // Find share candidates
@@ -1296,7 +1387,23 @@ function checkSessionAndRole() {
     if (passAv) passAv.textContent = session.name.charAt(0).toUpperCase();
 
     const dLabel = $('driverNameLabel');
-    if (dLabel && role === 'driver') dLabel.textContent = session.name;
+    if (dLabel && role === 'driver') {
+      dLabel.textContent = session.driverId ? `${session.name} · ${session.driverId}` : session.name;
+    }
+
+    const mLabel = $('managerNameLabel');
+    if (mLabel && role === 'manager') {
+      mLabel.textContent = session.managerId ? `${session.name} · ${session.managerId}` : session.name;
+    }
+
+    if (role === 'driver' && session.driverId) {
+      const driverSel = $('driverSelect');
+      if (driverSel) {
+        if (session.driverId === 'DRV-101') driverSel.value = 'd1';
+        else if (session.driverId === 'DRV-102') driverSel.value = 'd3';
+        else if (session.driverId === 'DRV-103') driverSel.value = 'd4';
+      }
+    }
   }
 
   showScreen(role);
@@ -1311,7 +1418,7 @@ async function main() {
   await initMap();
   await refreshAll();
 
-  // Default or URL vehicle selection
+  // Set default vehicle or URL vehicle
   const params = new URLSearchParams(window.location.search);
   const urlVehicle = params.get('vehicle');
   if (urlVehicle && VEHICLE_CONFIG[urlVehicle]) {
@@ -1334,6 +1441,7 @@ async function main() {
   window.selectVehicle      = selectVehicle;
   window.quickSelectCity    = quickSelectCity;
   window.renderDriverView   = renderDriverView;
+  window.onMapCityClicked   = onMapCityClicked;
 }
 
 main().catch((e) => {

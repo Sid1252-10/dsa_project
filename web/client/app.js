@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════
-// CabSystem — Complete Client App Logic
+// Yarivo — Complete Client App Logic
 // Interactive Mapbox Map + Smart City Search + Full DSA Flow
 // ═══════════════════════════════════════════════════════════
 
@@ -44,17 +44,9 @@ const CITY_COORDS = {
 
 const maps = { passenger: null, driver: null };
 const mapMarkers = { passenger: [], driver: [] };
-
-function updateCityLabelVisibility(role) {
-  const map = maps[role];
-  if (!map) return;
-  const zoom = map.getZoom();
-  for (const marker of mapMarkers[role]) {
-    const element = marker.getElement();
-    const threshold = element.dataset.kind === "major" ? 6 : 8;
-    element.classList.toggle("city-marker--labeled", zoom >= threshold);
-  }
-}
+const mapViewSignatures = { passenger: '', driver: '' };
+const selectedPlaces = { from: null, to: null };
+let routeLookupTimer = null;
 
 // ── Vehicle configuration ─────────────────────────────────
 const VEHICLE_CONFIG = {
@@ -152,7 +144,15 @@ async function apiPost(url, body) {
 // ── Utilities ─────────────────────────────────────────────
 function cityName(cityId) {
   const c = graph?.cities?.find((x) => x.id === cityId);
-  return c ? c.name : cityId;
+  return escapeHtml(c ? c.name : cityId);
+}
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
+}
+
+function newSearchSessionToken() {
+  return window.crypto?.randomUUID?.() || `search-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 function routeText(route) {
@@ -251,6 +251,7 @@ function notifIcon(type) {
 
 // ── Screen navigation ─────────────────────────────────────
 function showScreen(name) {
+  if (!['passenger', 'driver', 'manager'].includes(name)) name = 'passenger';
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   const el = $(`screen-${name}`);
   if (el) el.classList.add('active');
@@ -264,14 +265,12 @@ function showScreen(name) {
     });
   }
 
-  if (name !== 'role') {
-    if (!autoRefreshTimer) {
-      autoRefreshTimer = setInterval(async () => {
-        try { await refreshAll(); } catch (_) { /* ignore network blips */ }
-      }, 4000);
-    }
-    refreshAll().catch(console.error);
+  if (!autoRefreshTimer) {
+    autoRefreshTimer = setInterval(async () => {
+      try { await refreshAll(); } catch (_) { /* ignore network blips */ }
+    }, 4000);
   }
+  refreshAll().catch(console.error);
 }
 
 function goHome() {
@@ -310,7 +309,7 @@ function selectVehicle(type) {
   onRouteEndpointsChanged();
 }
 
-// ── City Search & Auto-Recommend Autocomplete ─────────────
+// ── Worldwide Mapbox place search ─────────────────────────
 function setupCityAutocomplete(searchInputId, hiddenSelectId, dropdownId, searchBtnId) {
   const input        = $(searchInputId);
   const hiddenSelect = $(hiddenSelectId);
@@ -320,151 +319,105 @@ function setupCityAutocomplete(searchInputId, hiddenSelectId, dropdownId, search
   if (!input || !dropdown) return;
 
   let activeIndex = -1;
+  let places = [];
+  let searchTimer = null;
+  let searchSequence = 0;
+  let sessionToken = newSearchSessionToken();
+  const placeKey = searchInputId.startsWith('from') ? 'from' : 'to';
 
-  function renderSuggestions(query = '') {
-    if (!graph?.cities?.length) return;
-    const cleanQuery = query.trim().toLowerCase();
-
-    const filtered = graph.cities.filter(c => {
-      if (!cleanQuery) return true;
-      return c.name.toLowerCase().includes(cleanQuery) || c.id.toLowerCase().includes(cleanQuery);
-    });
-
-    filtered.sort((a, b) => {
-      if (a.kind === 'major' && b.kind !== 'major') return -1;
-      if (a.kind !== 'major' && b.kind === 'major') return 1;
-      return a.name.localeCompare(b.name);
-    });
-
-    if (!filtered.length) {
-      dropdown.innerHTML = `
-        <div class="autocomplete-header">
-          <span>Punjab Cities</span>
-          <span style="cursor:pointer;" onclick="this.closest('.autocomplete-dropdown').classList.remove('open')">✕</span>
-        </div>
-        <div style="padding:12px;font-size:12px;color:var(--text-muted);text-align:center;">
-          No cities found matching "<strong>${escapeHtml(query)}</strong>"
-        </div>
-      `;
+  async function renderSuggestions(query = '') {
+    const cleanQuery = query.trim();
+    const sequence = ++searchSequence;
+    if (cleanQuery.length < 2) {
+      dropdown.innerHTML = '<div class="autocomplete-header">Type at least 2 characters to search worldwide</div>';
       dropdown.classList.add('open');
+      places = [];
       return;
     }
-
-    let html = `
-      <div class="autocomplete-header">
-        <span>Available Punjab Cities (${filtered.length})</span>
-        <span style="cursor:pointer;font-weight:bold" onclick="this.closest('.autocomplete-dropdown').classList.remove('open')">✕ Close</span>
-      </div>
-    `;
-
-    filtered.forEach((city, idx) => {
-      let displayName = city.name;
-      if (cleanQuery) {
-        const regex = new RegExp(`(${escapeRegex(cleanQuery)})`, 'gi');
-        displayName = city.name.replace(regex, '<mark>$1</mark>');
-      }
-      const badge = city.kind === 'major'
-        ? '<span class="badge badge-completed">Major City ★</span>'
-        : '<span class="badge" style="background:#F2F4F7;color:#667085">Minor City</span>';
-
-      html += `
-        <div class="autocomplete-item ${idx === activeIndex ? 'active' : ''}" data-city-id="${city.id}" data-city-name="${city.name}">
-          <div class="autocomplete-item__left">
-            <span class="autocomplete-item__icon">${city.kind === 'major' ? '🏙️' : '📍'}</span>
-            <div>
-              <div class="autocomplete-item__name">${displayName}</div>
-              <div class="autocomplete-item__sub">Punjab Road Network Node</div>
-            </div>
-          </div>
-          <div>${badge}</div>
-        </div>
-      `;
-    });
-
-    dropdown.innerHTML = html;
+    dropdown.innerHTML = '<div class="autocomplete-header">Searching places…</div>';
     dropdown.classList.add('open');
-
-    // Attach click listeners to suggestions
-    dropdown.querySelectorAll('.autocomplete-item').forEach(item => {
-      item.addEventListener('mousedown', (e) => {
-        e.preventDefault(); // prevent blur
-        chooseCity(item.dataset.cityId, item.dataset.cityName);
-      });
-    });
-  }
-
-  function chooseCity(cityId, cName) {
-    if (!cityId) return;
-    const city = graph?.cities?.find(c => c.id === cityId);
-    const star = city?.kind === 'major' ? ' ★' : '';
-    input.value = `${cName || city?.name || cityId}${star}`;
-    if (hiddenSelect) {
-      hiddenSelect.value = cityId;
+    try {
+      const url = new URL('https://api.mapbox.com/search/searchbox/v1/suggest');
+      url.search = new URLSearchParams({ q: cleanQuery, access_token: MAPBOX_TOKEN, session_token: sessionToken, limit: '6', language: 'en' });
+      const response = await fetch(url);
+      if (sequence !== searchSequence) return;
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || data.error || `Place search failed (${response.status}). Check the token’s Search Box access and network.`);
+      places = data.suggestions || [];
+      if (!places.length) {
+        dropdown.innerHTML = `<div class="autocomplete-header">No places found for “${escapeHtml(cleanQuery)}”</div>`;
+        return;
+      }
+      dropdown.innerHTML = `<div class="autocomplete-header">Worldwide locations</div>` + places.map((feature, index) => {
+        const title = feature.name_preferred || feature.name;
+        const subtitle = feature.full_address || feature.place_formatted || '';
+        return `<div class="autocomplete-item ${index === activeIndex ? 'active' : ''}" data-place-index="${index}"><div class="autocomplete-item__left"><span class="autocomplete-item__icon">📍</span><div><div class="autocomplete-item__name">${escapeHtml(title)}</div><div class="autocomplete-item__sub">${escapeHtml(subtitle)}</div></div></div></div>`;
+      }).join('');
+      dropdown.querySelectorAll('.autocomplete-item').forEach(item => item.addEventListener('mousedown', (event) => {
+        event.preventDefault();
+        choosePlace(places[Number(item.dataset.placeIndex)]);
+      }));
+    } catch (error) {
+      if (sequence !== searchSequence) return;
+      dropdown.innerHTML = `<div class="autocomplete-header">${escapeHtml(error.message)}</div>`;
     }
-    input.dataset.selectedCityId = cityId;
-    dropdown.classList.remove('open');
-    activeIndex = -1;
-
-    // Trigger map update & route calculation
-    onRouteEndpointsChanged();
   }
 
-  // Focus opens recommendations
-  input.addEventListener('focus', () => {
-    renderSuggestions(input.value);
-  });
+  async function choosePlace(suggestion) {
+    if (!suggestion?.mapbox_id) return;
+    searchSequence += 1;
+    const choiceSession = sessionToken;
+    const chosenQuery = input.value;
+    dropdown.innerHTML = '<div class="autocomplete-header">Loading selected location…</div>';
+    dropdown.classList.add('open');
+    try {
+      const url = new URL(`https://api.mapbox.com/search/searchbox/v1/retrieve/${encodeURIComponent(suggestion.mapbox_id)}`);
+      url.search = new URLSearchParams({ access_token: MAPBOX_TOKEN, session_token: choiceSession, language: 'en' });
+      const response = await fetch(url);
+      const data = await response.json();
+      if (input.value !== chosenQuery) return;
+      const feature = data.features?.[0];
+      if (!response.ok || !feature) throw new Error(data.message || 'Could not load that location. Please choose another result.');
+      const properties = feature.properties || {};
+      const coordinates = properties.coordinates
+        ? [properties.coordinates.longitude, properties.coordinates.latitude]
+        : feature.geometry?.coordinates;
+      if (!Array.isArray(coordinates) || coordinates.length < 2) throw new Error('That location has no usable map coordinates.');
+      const place = { name: properties.full_address || [properties.name_preferred || properties.name, properties.place_formatted].filter(Boolean).join(', '), coordinates };
+      sessionToken = newSearchSessionToken();
+      selectedPlaces[placeKey] = place;
+      input.value = place.name;
+      if (hiddenSelect) hiddenSelect.value = place.name;
+      input.dataset.selectedCityId = place.name;
+      dropdown.classList.remove('open');
+      onRouteEndpointsChanged();
+    } catch (error) {
+      dropdown.innerHTML = `<div class="autocomplete-header">${escapeHtml(error.message)}</div>`;
+    }
+  }
 
-  // Typing filters recommendations
+  input.addEventListener('focus', () => { if (input.value) renderSuggestions(input.value); });
   input.addEventListener('input', () => {
     activeIndex = -1;
-    renderSuggestions(input.value);
+    places = [];
+    selectedPlaces[placeKey] = null;
+    if (hiddenSelect) hiddenSelect.value = '';
+    onRouteEndpointsChanged();
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => renderSuggestions(input.value), 300);
   });
-
-  // Search button opens recommendations
-  if (searchBtn) {
-    searchBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      input.focus();
-      renderSuggestions('');
-    });
-  }
-
-  // Keyboard navigation
-  input.addEventListener('keydown', (e) => {
+  if (searchBtn) searchBtn.addEventListener('click', (event) => { event.preventDefault(); input.focus(); renderSuggestions(input.value); });
+  input.addEventListener('keydown', (event) => {
     const items = dropdown.querySelectorAll('.autocomplete-item');
-    if (!dropdown.classList.contains('open') || !items.length) {
-      if (e.key === 'ArrowDown' || e.key === 'Enter') {
-        renderSuggestions(input.value);
-      }
-      return;
-    }
-
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      activeIndex = (activeIndex + 1) % items.length;
-      updateActiveItem(items);
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      activeIndex = (activeIndex - 1 + items.length) % items.length;
-      updateActiveItem(items);
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
-      if (activeIndex >= 0 && activeIndex < items.length) {
-        const active = items[activeIndex];
-        chooseCity(active.dataset.cityId, active.dataset.cityName);
-      } else if (items.length > 0) {
-        chooseCity(items[0].dataset.cityId, items[0].dataset.cityName);
-      }
-    } else if (e.key === 'Escape') {
-      dropdown.classList.remove('open');
-    }
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      if (!items.length) return;
+      event.preventDefault();
+      activeIndex = (activeIndex + (event.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length;
+      items.forEach((item, index) => item.classList.toggle('active', index === activeIndex));
+    } else if (event.key === 'Enter') {
+      if (items.length && places.length) { event.preventDefault(); choosePlace(places[Math.max(0, activeIndex)]); }
+    } else if (event.key === 'Escape') dropdown.classList.remove('open');
   });
-
-  function updateActiveItem(items) {
-    items.forEach((el, idx) => el.classList.toggle('active', idx === activeIndex));
-    if (items[activeIndex]) items[activeIndex].scrollIntoView({ block: 'nearest' });
-  }
 
   // Close when clicking outside
   document.addEventListener('click', (e) => {
@@ -473,7 +426,16 @@ function setupCityAutocomplete(searchInputId, hiddenSelectId, dropdownId, search
     }
   });
 
-  input.chooseCity = chooseCity;
+  input.chooseCity = (id, name) => {
+    const city = graph?.cities?.find(item => item.id === id);
+    if (!city || !CITY_COORDS[city.id]) return;
+    const place = { name: `${city.name}, Punjab, India`, coordinates: CITY_COORDS[city.id] };
+    selectedPlaces[placeKey] = place;
+    input.value = place.name;
+    if (hiddenSelect) hiddenSelect.value = place.name;
+    dropdown.classList.remove('open');
+    onRouteEndpointsChanged();
+  };
 }
 
 function quickSelectCity(fieldBaseId, cityId) {
@@ -517,29 +479,53 @@ function onMapCityClicked(cityId, cName) {
 
 // ── Real-Time Route Preview on Map ────────────────────────
 function onRouteEndpointsChanged() {
-  const fromId = $('fromCity')?.value;
-  const toId   = $('toCity')?.value;
-
-  if (fromId && toId && fromId !== toId) {
-    const route = findShortestPath(fromId, toId);
-    if (route) {
-      selectedRoute = route;
-      const vCfg = VEHICLE_CONFIG[selectedVehicle] || VEHICLE_CONFIG.sedan;
-      const baseFare = Math.round((55 + 20 * route.distance) * vCfg.multiplier);
-      const mapStatus = $('mapStatus');
-      if (mapStatus) {
-        mapStatus.innerHTML = `
-          <strong>Optimal Route (Dijkstra):</strong> ${routeText(route)} ·
-          <strong>${route.distance} km</strong> ·
-          ${vCfg.icon} <strong>Est. Fare: ₹${baseFare}</strong>
-        `;
-      }
-    }
-  } else {
+  clearTimeout(routeLookupTimer);
+  const from = selectedPlaces.from;
+  const to = selectedPlaces.to;
+  if (!from || !to) {
     selectedRoute = null;
+    const status = $('mapStatus');
+    if (status) status.textContent = 'Search worldwide locations to preview a driving route.';
+    drawMap('mapSvg', 'mapStatus');
+    return;
   }
-
+  if (from.coordinates[0] === to.coordinates[0] && from.coordinates[1] === to.coordinates[1]) {
+    selectedRoute = null;
+    const status = $('mapStatus');
+    if (status) status.textContent = 'Choose two different locations.';
+    drawMap('mapSvg', 'mapStatus');
+    return;
+  }
+  selectedRoute = null;
   drawMap('mapSvg', 'mapStatus');
+  const signature = JSON.stringify([from.coordinates, to.coordinates]);
+  routeLookupTimer = setTimeout(async () => {
+    try {
+      const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${from.coordinates.join(',')};${to.coordinates.join(',')}?overview=full&geometries=geojson&access_token=${encodeURIComponent(MAPBOX_TOKEN)}`;
+      const response = await fetch(url);
+      const data = await response.json();
+      if (signature !== JSON.stringify([selectedPlaces.from?.coordinates, selectedPlaces.to?.coordinates])) return;
+      if (!response.ok || !data.routes?.length) throw new Error(data.message || 'No driving route found for these locations.');
+      const result = data.routes[0];
+      selectedRoute = {
+        path: [from.name, to.name],
+        distance: Math.max(1, Math.round(result.distance / 1000)),
+        geometry: result.geometry,
+        fromLocation: from,
+        toLocation: to,
+      };
+      const vCfg = VEHICLE_CONFIG[selectedVehicle] || VEHICLE_CONFIG.sedan;
+      const baseFare = Math.round((55 + 20 * selectedRoute.distance) * vCfg.multiplier);
+      const status = $('mapStatus');
+      if (status) status.innerHTML = `<strong>Driving route:</strong> ${escapeHtml(from.name)} → ${escapeHtml(to.name)} · <strong>${selectedRoute.distance} km</strong> · ${vCfg.icon} <strong>Est. Fare: ₹${baseFare}</strong>`;
+      drawMap('mapSvg', 'mapStatus');
+    } catch (error) {
+      selectedRoute = null;
+      const status = $('mapStatus');
+      if (status) status.textContent = error.message;
+      drawMap('mapSvg', 'mapStatus');
+    }
+  }, 0);
 }
 
 async function initMap(role = currentScreen) {
@@ -563,8 +549,8 @@ async function initMap(role = currentScreen) {
     const map = new mapboxgl.Map({
       container,
       style: 'mapbox://styles/mapbox/streets-v12',
-      center: [75.3, 31.1],
-      zoom: 6,
+      center: [77.2090, 28.6139],
+      zoom: 7.5,
     });
     maps[role] = map;
 
@@ -573,17 +559,10 @@ async function initMap(role = currentScreen) {
       map.once('error', (event) => reject(event.error || new Error('Mapbox map failed to load.')));
     });
 
-    const coordinates = Object.values(CITY_COORDS);
-    const bounds = coordinates.reduce(
-      (result, point) => result.extend(point),
-      new mapboxgl.LngLatBounds(coordinates[0], coordinates[0])
-    );
-    map.fitBounds(bounds, { padding: 36, maxZoom: 7 });
     map.on('error', (event) => {
       console.error('Mapbox map error:', event.error || event);
       if (status) status.textContent = 'Mapbox could not load map data. Check the token, allowed URLs, and network.';
     });
-    map.on('zoom', () => updateCityLabelVisibility(role));
     drawMap(config.svgId, config.statusId);
     return map;
   } catch (err) {
@@ -599,57 +578,31 @@ function drawMap(mapTargetId = 'mapSvg', statusId = 'mapStatus') {
   const map = maps[role];
   if (!map || !graph || !map.isStyleLoaded()) return;
 
-  const roads = graph.roads.flatMap(([a, b]) => {
-    const from = CITY_COORDS[a];
-    const to = CITY_COORDS[b];
-    return from && to ? [{ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [from, to] } }] : [];
-  });
-  const route = [];
-  if (selectedRoute?.path?.length > 1) {
-    for (let i = 0; i < selectedRoute.path.length - 1; i++) {
-      const from = CITY_COORDS[selectedRoute.path[i]];
-      const to = CITY_COORDS[selectedRoute.path[i + 1]];
-      if (from && to) route.push({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [from, to] } });
-    }
-  }
-  const asCollection = (features) => ({ type: 'FeatureCollection', features });
-
-  if (!map.getSource('graph-roads')) {
-    map.addSource('graph-roads', { type: 'geojson', data: asCollection(roads) });
-    map.addLayer({ id: 'graph-roads-line', type: 'line', source: 'graph-roads', paint: { 'line-color': '#738198', 'line-opacity': 0.65, 'line-width': 2 } });
-    map.addSource('selected-route', { type: 'geojson', data: asCollection(route) });
+  const collection = { type: 'FeatureCollection', features: selectedRoute?.geometry ? [{ type: 'Feature', properties: {}, geometry: selectedRoute.geometry }] : [] };
+  if (!map.getSource('selected-route')) {
+    map.addSource('selected-route', { type: 'geojson', data: collection });
     map.addLayer({ id: 'selected-route-line', type: 'line', source: 'selected-route', paint: { 'line-color': '#1677ff', 'line-width': 5 } });
-  } else {
-    map.getSource('graph-roads').setData(asCollection(roads));
-    map.getSource('selected-route').setData(asCollection(route));
+  } else map.getSource('selected-route').setData(collection);
+  mapMarkers[role].forEach(marker => marker.remove());
+  mapMarkers[role] = [];
+  const locations = [
+    selectedRoute?.fromLocation || (role === 'passenger' ? selectedPlaces.from : null),
+    selectedRoute?.toLocation || (role === 'passenger' ? selectedPlaces.to : null),
+  ].filter(Boolean);
+  locations.forEach((location, index) => {
+    const marker = new mapboxgl.Marker({ color: index === 0 ? '#16a36a' : '#1677ff' })
+      .setLngLat(location.coordinates).setPopup(new mapboxgl.Popup({ offset: 24 }).setText(location.name)).addTo(map);
+    mapMarkers[role].push(marker);
+  });
+  const routeCoordinates = selectedRoute?.geometry?.coordinates?.length
+    ? selectedRoute.geometry.coordinates
+    : locations.map(location => location.coordinates);
+  const viewSignature = JSON.stringify(routeCoordinates);
+  if (routeCoordinates.length && mapViewSignatures[role] !== viewSignature) {
+    const bounds = routeCoordinates.reduce((b, point) => b.extend(point), new mapboxgl.LngLatBounds(routeCoordinates[0], routeCoordinates[0]));
+    map.fitBounds(bounds, { padding: 48, maxZoom: 14 });
   }
-
-  if (!mapMarkers[role].length) {
-    for (const city of graph.cities) {
-      const coordinate = CITY_COORDS[city.id];
-      if (!coordinate) continue;
-      const element = document.createElement('button');
-      element.type = 'button';
-      element.className = `city-marker city-marker--${city.kind}`;
-      element.dataset.kind = city.kind;
-      element.setAttribute('aria-label', city.name);
-      element.title = `Select ${city.name}`;
-      element.innerHTML = `<span class="city-marker__dot"></span><span class="city-marker__label"></span>`;
-      element.querySelector('.city-marker__label').textContent = city.name;
-      element.addEventListener('click', (event) => {
-        event.stopPropagation();
-        onMapCityClicked(city.id, city.name);
-      });
-      const marker = new mapboxgl.Marker({ element, anchor: 'center' }).setLngLat(coordinate).addTo(map);
-      mapMarkers[role].push(marker);
-    }
-  }
-
-  updateCityLabelVisibility(role);
-  const status = $(statusId);
-  if (status && !selectedRoute?.path?.length) {
-    status.textContent = 'Click a city marker or choose pickup and destination to preview the shortest route.';
-  }
+  mapViewSignatures[role] = viewSignature;
 }
 
 // ── Countdown Ticker ──────────────────────────────────────
@@ -828,42 +781,28 @@ function shareCandidateCard(candidate, requestId) {
 
 async function submitRide() {
   const userName     = $('userName').value.trim();
-  let fromCityId     = $('fromCity')?.value;
-  let toCityId       = $('toCity')?.value;
+  const fromCityId   = selectedPlaces.from?.name || '';
+  const toCityId     = selectedPlaces.to?.name || '';
   const wantsSharing = $('wantsSharing').checked;
   const numPersons   = parseInt($('numPersons').value, 10) || 1;
   const vType        = selectedVehicle || 'sedan';
   const vCfg         = VEHICLE_CONFIG[vType] || VEHICLE_CONFIG.sedan;
-
-  // Fallback: If user typed in search input directly without clicking dropdown
-  if (!fromCityId && $('fromCitySearch')?.value) {
-    const raw = $('fromCitySearch').value.replace(/★/g, '').trim().toLowerCase();
-    const match = graph?.cities?.find(c => c.name.toLowerCase() === raw || c.id.toLowerCase() === raw || c.name.toLowerCase().startsWith(raw));
-    if (match) {
-      fromCityId = match.id;
-      if ($('fromCity')) $('fromCity').value = match.id;
-    }
-  }
-  if (!toCityId && $('toCitySearch')?.value) {
-    const raw = $('toCitySearch').value.replace(/★/g, '').trim().toLowerCase();
-    const match = graph?.cities?.find(c => c.name.toLowerCase() === raw || c.id.toLowerCase() === raw || c.name.toLowerCase().startsWith(raw));
-    if (match) {
-      toCityId = match.id;
-      if ($('toCity')) $('toCity').value = match.id;
-    }
-  }
 
   if (!userName) {
     alert('Please enter your full name.');
     $('userName').focus();
     return;
   }
-  if (!fromCityId || !toCityId) {
-    alert('Please select both pickup and destination cities in Punjab.');
+  if (!fromCityId || !toCityId || !selectedPlaces.from || !selectedPlaces.to) {
+    alert('Please select both pickup and destination from the location suggestions.');
     return;
   }
-  if (fromCityId === toCityId) {
-    alert('Pickup and destination cannot be the same city.');
+  if (!selectedRoute?.geometry) {
+    alert('Please wait for the driving route to load, then try again.');
+    return;
+  }
+  if (fromCityId === toCityId || selectedPlaces.from.coordinates.join(',') === selectedPlaces.to.coordinates.join(',')) {
+    alert('Pickup and destination cannot be the same location.');
     return;
   }
 
@@ -873,7 +812,7 @@ async function submitRide() {
 
   try {
     // ── PRESERVED API CALL ──────────────────────────────
-    const res = await apiPost('/api/request', { userName, fromCityId, toCityId, wantsSharing, numPersons });
+    const res = await apiPost('/api/request', { userName, fromCityId, toCityId, wantsSharing, numPersons, route: selectedRoute, fromLocation: selectedPlaces.from, toLocation: selectedPlaces.to });
     const req = res.request;
     lastRequestId = req.id;
     selectedRoute = req.route;
@@ -938,6 +877,12 @@ function resetPassengerForm() {
   $('shareSection').classList.add('hidden');
   $('shareCandidates').innerHTML = '';
   lastRequestId = null;
+  selectedPlaces.from = null;
+  selectedPlaces.to = null;
+  if ($('fromCity')) $('fromCity').value = '';
+  if ($('toCity')) $('toCity').value = '';
+  if ($('fromCitySearch')) $('fromCitySearch').value = '';
+  if ($('toCitySearch')) $('toCitySearch').value = '';
   selectedRoute = null;
   drawMap('mapSvg', 'mapStatus');
 }
@@ -1254,14 +1199,23 @@ async function refreshAll() {
     setOptions($('toCity'),        graph.cities, true);
     setOptions($('shareFromCity'), graph.cities, false);
     setOptions($('shareToCity'),   graph.cities, false);
+    for (const [id, place] of [['fromCity', selectedPlaces.from], ['toCity', selectedPlaces.to]]) {
+      const select = $(id);
+      if (!select || !place) continue;
+      if (!Array.from(select.options).some(option => option.value === place.name)) select.add(new Option(place.name, place.name));
+      select.value = place.name;
+    }
+    if (lastRequestId && selectedPlaces.from && selectedPlaces.to) {
+      for (const [id, place] of [['shareFromCity', selectedPlaces.from], ['shareToCity', selectedPlaces.to]]) {
+        const select = $(id);
+        if (select && !Array.from(select.options).some(option => option.value === place.name)) {
+          select.add(new Option(place.name, place.name));
+        }
+      }
+      $('shareFromCity').value = selectedPlaces.from.name;
+      $('shareToCity').value = selectedPlaces.to.name;
+    }
 
-    // Initial default pickup & destination if empty
-    if (!$('fromCity').value && !$('fromCitySearch').value) {
-      quickSelectCity('fromCity', 'amritsar');
-    }
-    if (!$('toCity').value && !$('toCitySearch').value) {
-      quickSelectCity('toCity', 'chandigarh');
-    }
   }
 
   // Screen-specific renders
@@ -1303,6 +1257,7 @@ function wireEvents() {
     const previousCity = fromSelect.value;
     fromSelect.value = toSelect.value;
     toSelect.value = previousCity;
+    [selectedPlaces.from, selectedPlaces.to] = [selectedPlaces.to, selectedPlaces.from];
     if (fromInput && toInput) {
       const previousText = fromInput.value;
       fromInput.value = toInput.value;

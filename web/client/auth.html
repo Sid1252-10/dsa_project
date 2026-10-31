@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CabSystem — Sign In &amp; Registration</title>
+  <title>Yarivo — Sign In &amp; Registration</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -70,19 +70,6 @@ input, select { font-family: inherit; }
 .auth-role-pill__icon  { font-size: 26px; flex-shrink: 0; }
 .auth-role-pill__title { font-size: 15px; font-weight: 700; color: white; }
 .auth-role-pill__desc  { font-size: 12px; color: rgba(255,255,255,0.5); margin-top: 2px; }
-
-.auth-visual__stats {
-  display: flex; gap: 16px; margin-top: 36px; flex-wrap: wrap; justify-content: center;
-}
-.auth-stat {
-  text-align: center;
-  padding: 10px 16px;
-  background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(255,255,255,0.1);
-  border-radius: 10px;
-}
-.auth-stat__num   { font-size: 18px; font-weight: 800; color: white; }
-.auth-stat__label { font-size: 11px; color: rgba(255,255,255,0.5); margin-top: 2px; }
 
 /* ── Right form panel ──────────────────────────────────── */
 .auth-form-panel {
@@ -258,7 +245,7 @@ input, select { font-family: inherit; }
   <div class="auth-visual">
     <div class="auth-visual__inner">
       <div class="auth-visual__logo">🚖</div>
-      <div class="auth-visual__brand">CabSystem Punjab</div>
+      <div class="auth-visual__brand">Yarivo</div>
       <div class="auth-visual__tagline">Select your account role to sign in or create a new profile with Driver ID or Manager ID.</div>
 
       <div class="auth-roles">
@@ -285,11 +272,6 @@ input, select { font-family: inherit; }
         </button>
       </div>
 
-      <div class="auth-visual__stats">
-        <div class="auth-stat"><div class="auth-stat__num">4</div><div class="auth-stat__label">Drivers</div></div>
-        <div class="auth-stat"><div class="auth-stat__num">23</div><div class="auth-stat__label">Cities</div></div>
-        <div class="auth-stat"><div class="auth-stat__num">₹55</div><div class="auth-stat__label">From</div></div>
-      </div>
     </div>
   </div>
 
@@ -742,7 +724,7 @@ function handleLogin() {
 
   const urlVehicle = new URLSearchParams(window.location.search).get('vehicle');
   const vehicleParam = urlVehicle ? `&vehicle=${encodeURIComponent(urlVehicle)}` : '';
-  setTimeout(() => { window.location.href = `./app.html?role=${currentRole}${vehicleParam}`; }, 500);
+  setTimeout(() => { window.location.href = `./app.html?role=${currentRole}${vehicleParam}&build=worldwide-search-20261031`; }, 500);
 }
 
 // ── Register ───────────────────────────────────────────────
@@ -837,7 +819,7 @@ function handleRegister() {
 
   const urlVehicle = new URLSearchParams(window.location.search).get('vehicle');
   const vehicleParam = urlVehicle ? `&vehicle=${encodeURIComponent(urlVehicle)}` : '';
-  setTimeout(() => { window.location.href = `./app.html?role=${currentRole}${vehicleParam}`; }, 800);
+  setTimeout(() => { window.location.href = `./app.html?role=${currentRole}${vehicleParam}&build=worldwide-search-20261031`; }, 800);
 }
 
 // ── Init ───────────────────────────────────────────────────

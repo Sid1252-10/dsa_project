@@ -1,7 +1,7 @@
 """
 cab_system.py
 =============
-Queue-Based Cab Allocation & Ride Sharing System
+Yarivo — Queue-Based Ride Booking & Sharing System
 DSA Project  |  Python (Rewritten from cab_system.cpp)
 
 Core Data Structures:
@@ -533,7 +533,7 @@ def cancel_waiting_request(request_id: int) -> None:
 
 def show_menu() -> None:
     print_separator('=')
-    print("  CAB ALLOCATION SYSTEM")
+    print("  YARIVO RIDE SYSTEM")
     print_separator('=')
     print("  1. Submit a Ride Request")
     print("  2. Process Pending Queue (batch)")
@@ -643,7 +643,7 @@ def main() -> None:
 
     print()
     print_separator('=')
-    print("   QUEUE-BASED CAB ALLOCATION & RIDE SHARING SYSTEM")
+    print("   YARIVO RIDE BOOKING & SHARING")
     print_separator('=')
 
     load_demo_data()

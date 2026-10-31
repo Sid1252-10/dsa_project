@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Start the CabSystem web app/API and the Python CLI simulator.
+# Start the Yarivo web app/API and the Python CLI simulator.
 
 set -euo pipefail
 
@@ -41,13 +41,13 @@ SERVER_PID=$!
 
 cleanup() {
   echo
-  echo "Stopping CabSystem web server..."
+  echo "Stopping Yarivo web server..."
   kill "$SERVER_PID" 2>/dev/null || true
   wait "$SERVER_PID" 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
 
-WEB_URL="http://localhost:5174/app.html?role=passenger"
+WEB_URL="http://localhost:5174/index.html?build=landing-home-20261031"
 for _ in {1..20}; do
   if curl --silent --fail "http://localhost:5174/api/graph" >/dev/null 2>&1; then
     break
@@ -55,7 +55,7 @@ for _ in {1..20}; do
   sleep 0.25
 done
 
-echo "CabSystem dashboard: $WEB_URL"
+echo "Yarivo dashboard: $WEB_URL"
 if command -v xdg-open >/dev/null 2>&1; then
   xdg-open "$WEB_URL" >/dev/null 2>&1 || true
 elif command -v open >/dev/null 2>&1; then

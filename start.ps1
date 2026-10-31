@@ -11,7 +11,7 @@ $ErrorActionPreference = "Stop"
 Set-Location -Path $PSScriptRoot
 
 Write-Host "=======================================================" -ForegroundColor Cyan
-Write-Host "   🚖 Cab Allocation System Startup Script (PowerShell)" -ForegroundColor Cyan
+Write-Host "   🚖 Yarivo Startup Script (PowerShell)" -ForegroundColor Cyan
 Write-Host "=======================================================" -ForegroundColor Cyan
 
 # 1. Detect Python

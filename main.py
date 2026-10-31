@@ -65,7 +65,7 @@ def display_queue_status() -> None:
 def show_menu() -> None:
     """Display the interactive command menu."""
     ct.print_separator('=')
-    print("  CAB ALLOCATION SYSTEM")
+    print("  YARIVO RIDE SYSTEM")
     ct.print_separator('=')
     print("  1. Submit a Ride Request")
     print("  2. Process Pending Queue (batch)")
@@ -170,7 +170,7 @@ def main() -> None:
 
     print()
     ct.print_separator('=')
-    print("   QUEUE-BASED CAB ALLOCATION & RIDE SHARING SYSTEM")
+    print("   YARIVO RIDE BOOKING & SHARING")
     ct.print_separator('=')
 
     load_demo_data()

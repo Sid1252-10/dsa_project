@@ -3,7 +3,7 @@ setlocal
 cd /d "%~dp0"
 
 echo =======================================================
-echo    CabSystem Startup (Windows)
+echo    Yarivo Startup (Windows)
 echo =======================================================
 
 set "PYTHON_CMD="
@@ -38,25 +38,25 @@ if errorlevel 1 goto :error
 if errorlevel 1 goto :error
 
 set "PORT=5174"
-set "WEB_URL=http://localhost:5174/app.html?role=passenger"
-start "CabSystem Web Server" /min "%VENV_PYTHON%" "%~dp0web\server\server.py"
+set "WEB_URL=http://localhost:5174/index.html?build=landing-home-20261031"
+start "Yarivo Web Server" /min "%VENV_PYTHON%" "%~dp0web\server\server.py"
 if errorlevel 1 goto :error
 
 timeout /t 2 /nobreak >nul
-echo CabSystem dashboard: %WEB_URL%
+echo Yarivo dashboard: %WEB_URL%
 start "" "%WEB_URL%"
 
 echo Starting the Python CLI simulator. Close it or press Ctrl+C to stop both.
 "%VENV_PYTHON%" main.py
 
 echo.
-echo Stopping CabSystem web server...
-taskkill /fi "WINDOWTITLE eq CabSystem Web Server*" /t /f >nul 2>&1
+echo Stopping Yarivo web server...
+taskkill /fi "WINDOWTITLE eq Yarivo Web Server*" /t /f >nul 2>&1
 echo Goodbye.
 exit /b 0
 
 :error
-echo [ERROR] CabSystem startup failed. Check Python and pip setup.
-taskkill /fi "WINDOWTITLE eq CabSystem Web Server*" /t /f >nul 2>&1
+echo [ERROR] Yarivo startup failed. Check Python and pip setup.
+taskkill /fi "WINDOWTITLE eq Yarivo Web Server*" /t /f >nul 2>&1
 pause
 exit /b 1

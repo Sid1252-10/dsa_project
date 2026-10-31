@@ -1,7 +1,7 @@
 """
 server.py
 ---------
-Python backend server for the Punjab Cab Allocation & Ride Sharing Web UI.
+Python backend server for the Yarivo ride booking and sharing web app.
 Serves static files from web/client and implements all /api endpoints.
 Uses Python's standard library (http.server) — no external packages required.
 """
@@ -231,10 +231,20 @@ def snapshot():
     }
 
 
-def create_ride_request(user_name: str, from_city_id: str, to_city_id: str, wants_sharing: bool, num_persons: int = 1):
+def create_ride_request(user_name: str, from_city_id: str, to_city_id: str, wants_sharing: bool, num_persons: int = 1, route_override=None, from_location=None, to_location=None):
     if from_city_id == to_city_id:
         return {"ok": False, "error": "From and To cannot be the same city."}
-    route = shortest_path(from_city_id, to_city_id)
+    route = route_override if isinstance(route_override, dict) else shortest_path(from_city_id, to_city_id)
+    if isinstance(route_override, dict):
+        try:
+            distance = float(route_override.get("distance", 0))
+            geometry = route_override.get("geometry")
+            if distance <= 0 or not math.isfinite(distance) or not isinstance(geometry, dict) or geometry.get("type") != "LineString":
+                return {"ok": False, "error": "A valid driving route is required. Please select the locations again."}
+            route = {"path": [str(from_city_id), str(to_city_id)], "distance": round(distance, 1), "geometry": geometry,
+                     "fromLocation": from_location, "toLocation": to_location}
+        except (TypeError, ValueError):
+            return {"ok": False, "error": "The selected route data is invalid."}
     if not route["path"]:
         return {"ok": False, "error": "No route found between selected cities."}
 
@@ -553,10 +563,13 @@ class CabApiHandler(SimpleHTTPRequestHandler):
             to_city = body.get("toCityId")
             wants_sharing = body.get("wantsSharing", False)
             num_persons = body.get("numPersons", 1)
+            route_override = body.get("route")
+            from_location = body.get("fromLocation")
+            to_location = body.get("toLocation")
             if not user_name or not from_city or not to_city:
                 self._send_json({"ok": False, "error": "userName, fromCityId, toCityId are required."}, 400)
                 return
-            res = create_ride_request(user_name, from_city, to_city, wants_sharing, num_persons)
+            res = create_ride_request(user_name, from_city, to_city, wants_sharing, num_persons, route_override, from_location, to_location)
             self._send_json(res, 200 if res.get("ok") else 400)
             return
         elif path == "/api/driver/respond":

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CabSystem — Booking & Management</title>
+  <title>Yarivo — Booking &amp; Management</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -14,45 +14,6 @@
 <body>
 
 <!-- ════════════════════════════════════════════════════════
-     SCREEN 0: ROLE SELECTOR (Fallback / Switch)
-════════════════════════════════════════════════════════ -->
-<div id="screen-role" class="screen">
-  <div class="role-screen-inner">
-    <div class="role-logo">🚖</div>
-    <h1 class="role-title">CabSystem Punjab</h1>
-    <p class="role-sub">Select your account role to continue to the system</p>
-
-    <div class="role-grid">
-      <div class="role-card role-card--passenger" onclick="showScreen('passenger')">
-        <span class="role-card__icon">🧑‍💼</span>
-        <div class="role-card__title">Passenger</div>
-        <div class="role-card__desc">Book rides across Punjab, select vehicle types, enable ride sharing, and track your trip on the live road map.</div>
-        <div class="role-card__cta">Continue as Passenger →</div>
-      </div>
-      <div class="role-card role-card--driver" onclick="showScreen('driver')">
-        <span class="role-card__icon">🚗</span>
-        <div class="role-card__title">Driver</div>
-        <div class="role-card__desc">Accept or decline incoming ride requests matching customer vehicle types, view optimal routes, and earn fares.</div>
-        <div class="role-card__cta">Continue as Driver →</div>
-      </div>
-      <div class="role-card role-card--manager" onclick="showScreen('manager')">
-        <span class="role-card__icon">🛠️</span>
-        <div class="role-card__title">App Manager</div>
-        <div class="role-card__desc">Monitor the whole platform — driver fleets, active rides, pending requests, live route graph, and activity feeds.</div>
-        <div class="role-card__cta">Continue as Manager →</div>
-      </div>
-    </div>
-
-    <div style="display:flex; justify-content:center; gap:20px; align-items:center;">
-      <a href="./index.html" class="role-back">← Landing Page</a>
-      <span style="color:rgba(255,255,255,0.2)">|</span>
-      <a href="./auth.html" class="role-back">🔐 Sign In / Register</a>
-    </div>
-  </div>
-</div>
-
-
-<!-- ════════════════════════════════════════════════════════
      SCREEN 1: PASSENGER BOOKING INTERFACE
 ════════════════════════════════════════════════════════ -->
 <div id="screen-passenger" class="screen active">
@@ -60,7 +21,7 @@
   <div class="topbar">
     <div class="topbar__brand">
       <span class="topbar__brand-icon">🚖</span>
-      CabSystem
+      Yarivo
       <span class="topbar__badge topbar__badge--passenger">Passenger</span>
     </div>
     <div class="topbar__right">
@@ -70,7 +31,6 @@
       </div>
       <span class="topbar__time" id="serverTime"></span>
       <button class="btn btn-ghost btn-sm" onclick="refreshAll()" title="Refresh live status">↻ Refresh</button>
-      <button class="btn btn-secondary btn-sm" onclick="showScreen('role')" title="Switch role">⇄ Roles</button>
       <button class="btn btn-ghost btn-sm" onclick="logout()" title="Logout">Sign Out</button>
     </div>
   </div>
@@ -82,7 +42,7 @@
 
       <div class="booking-header">
         <div class="booking-header__title">Book Your Ride</div>
-        <div class="booking-header__sub">Select vehicle type, search Punjab cities, and dispatch nearest cab</div>
+        <div class="booking-header__sub">Search worldwide pickup and destination locations, then preview the driving route</div>
       </div>
 
       <div id="passengerStep1" class="booking-form">
@@ -136,24 +96,16 @@
 
         <!-- PICKUP CITY (SEARCH + AUTO-RECOMMEND) -->
         <div class="form-group">
-          <label class="form-label">PICKUP CITY (PUNJAB)</label>
+          <label class="form-label">PICKUP LOCATION</label>
           <div class="city-search-wrap">
             <div class="search-input-group">
               <span class="search-input-icon">📍</span>
-              <input id="fromCitySearch" class="form-control" type="text" placeholder="Type city (e.g. Amritsar, Ludhiana...)" autocomplete="off" />
+              <input id="fromCitySearch" class="form-control" type="text" placeholder="Search any address, city, or place" autocomplete="off" />
               <button class="search-btn-inside" id="fromCitySearchBtn" type="button">🔍 Search</button>
             </div>
             <div id="fromCityDropdown" class="autocomplete-dropdown"></div>
             <!-- Hidden select for backend compatibility -->
             <select id="fromCity" class="form-control" style="display:none"></select>
-          </div>
-          <!-- Quick recommendations -->
-          <div class="quick-chips">
-            <span class="quick-chip" onclick="quickSelectCity('fromCity', 'amritsar')">Amritsar ★</span>
-            <span class="quick-chip" onclick="quickSelectCity('fromCity', 'ludhiana')">Ludhiana ★</span>
-            <span class="quick-chip" onclick="quickSelectCity('fromCity', 'chandigarh')">Chandigarh ★</span>
-            <span class="quick-chip" onclick="quickSelectCity('fromCity', 'jalandhar')">Jalandhar ★</span>
-            <span class="quick-chip" onclick="quickSelectCity('fromCity', 'patiala')">Patiala ★</span>
           </div>
         </div>
 
@@ -164,24 +116,16 @@
 
         <!-- DESTINATION CITY (SEARCH + AUTO-RECOMMEND) -->
         <div class="form-group" style="margin-top:0">
-          <label class="form-label">DESTINATION CITY (PUNJAB)</label>
+          <label class="form-label">DESTINATION LOCATION</label>
           <div class="city-search-wrap">
             <div class="search-input-group">
               <span class="search-input-icon">🏁</span>
-              <input id="toCitySearch" class="form-control" type="text" placeholder="Type city (e.g. Chandigarh, Bathinda...)" autocomplete="off" />
+              <input id="toCitySearch" class="form-control" type="text" placeholder="Search any address, city, or place" autocomplete="off" />
               <button class="search-btn-inside" id="toCitySearchBtn" type="button">🔍 Search</button>
             </div>
             <div id="toCityDropdown" class="autocomplete-dropdown"></div>
             <!-- Hidden select for backend compatibility -->
             <select id="toCity" class="form-control" style="display:none"></select>
-          </div>
-          <!-- Quick recommendations -->
-          <div class="quick-chips">
-            <span class="quick-chip" onclick="quickSelectCity('toCity', 'chandigarh')">Chandigarh ★</span>
-            <span class="quick-chip" onclick="quickSelectCity('toCity', 'amritsar')">Amritsar ★</span>
-            <span class="quick-chip" onclick="quickSelectCity('toCity', 'bathinda')">Bathinda ★</span>
-            <span class="quick-chip" onclick="quickSelectCity('toCity', 'mohali')">Mohali ★</span>
-            <span class="quick-chip" onclick="quickSelectCity('toCity', 'pathankot')">Pathankot ★</span>
           </div>
         </div>
 
@@ -248,15 +192,13 @@
     <div class="right-col">
       <div class="map-container">
         <div class="map-header">
-          <div class="map-header__title">Punjab Road Network (Dijkstra Shortest Path)</div>
+          <div class="map-header__title">Worldwide Road Map</div>
           <div class="map-legend">
-            <div class="map-legend-item"><div class="legend-dot legend-dot--major"></div> Major City</div>
-            <div class="map-legend-item"><div class="legend-dot legend-dot--minor"></div> Minor City</div>
-            <div class="map-legend-item"><div class="legend-line legend-line--route"></div> Dispatched Route</div>
+            <div class="map-legend-item"><div class="legend-line legend-line--route"></div> Driving Route</div>
           </div>
         </div>
-        <div id="mapContainer" class="mapbox-container" role="region" aria-label="Interactive Punjab city map"></div>
-        <div id="mapStatus" class="map-status">Select pickup and destination to highlight the shortest route on the map.</div>
+        <div id="mapContainer" class="mapbox-container" role="region" aria-label="Interactive worldwide road map"></div>
+        <div id="mapStatus" class="map-status">Search worldwide locations to preview a driving route.</div>
       </div>
 
       <!-- Queues -->
@@ -282,7 +224,7 @@
   <div class="topbar">
     <div class="topbar__brand">
       <span class="topbar__brand-icon">🚖</span>
-      CabSystem
+      Yarivo
       <span class="topbar__badge topbar__badge--driver">Driver Portal</span>
     </div>
     <div class="topbar__right">
@@ -291,7 +233,6 @@
         <span id="driverNameLabel">Driver</span>
       </div>
       <button class="btn btn-ghost btn-sm" onclick="refreshAll()">↻ Refresh</button>
-      <button class="btn btn-secondary btn-sm" onclick="showScreen('role')">⇄ Roles</button>
       <button class="btn btn-ghost btn-sm" onclick="logout()">Sign Out</button>
     </div>
   </div>
@@ -351,14 +292,12 @@
     <div class="right-col">
       <div class="map-container" style="flex:1">
         <div class="map-header">
-          <div class="map-header__title">Punjab Driver Route Navigation</div>
+          <div class="map-header__title">Driver Route Navigation</div>
           <div class="map-legend">
-            <div class="map-legend-item"><div class="legend-dot legend-dot--major"></div> Major</div>
-            <div class="map-legend-item"><div class="legend-dot legend-dot--minor"></div> Minor</div>
             <div class="map-legend-item"><div class="legend-line legend-line--route"></div> Trip Route</div>
           </div>
         </div>
-        <div id="mapContainer2" class="mapbox-container" role="region" aria-label="Interactive Punjab driver route map"></div>
+        <div id="mapContainer2" class="mapbox-container" role="region" aria-label="Interactive driver route map"></div>
         <div id="mapStatus2" class="map-status">Click "Show path" on any request to inspect the customer's route on the map.</div>
       </div>
     </div>
@@ -373,7 +312,7 @@
   <div class="topbar">
     <div class="topbar__brand">
       <span class="topbar__brand-icon">🚖</span>
-      CabSystem
+      Yarivo
       <span class="topbar__badge topbar__badge--manager">Manager Console</span>
     </div>
     <div class="topbar__right">
@@ -384,7 +323,6 @@
       <span class="topbar__time" id="managerTime" style="display:block"></span>
       <button class="btn btn-ghost btn-sm" onclick="refreshAll()">↻ Refresh</button>
       <button class="btn btn-danger btn-sm" onclick="confirmReset()">🔄 Reset Demo State</button>
-      <button class="btn btn-secondary btn-sm" onclick="showScreen('role')">⇄ Roles</button>
       <button class="btn btn-ghost btn-sm" onclick="logout()">Sign Out</button>
     </div>
   </div>
@@ -469,7 +407,7 @@
   </div>
 </div>
 
-<script type="module" src="./app.js"></script>
+<script type="module" src="./app.js?v=worldwide-search-20261031"></script>
 </body>
 </html>
 

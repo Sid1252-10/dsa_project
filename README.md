@@ -1,4 +1,4 @@
-# 🚖 Cab Allocation System (DSA Project)
+# 🚖 Yarivo — Ride Booking & Sharing (DSA Project)
 
 ## Features
 - Queue-based ride request handling (FIFO)
@@ -51,7 +51,7 @@ npm run dev
 python web/server/server.py
 ```
 
-# 🚖 Queue-Based Cab Allocation & Ride Sharing System
+# 🚖 Yarivo — Queue-Based Ride Booking & Sharing System
 
 A console-based cab booking simulator built in **C++** that demonstrates core **Data Structures & Algorithms** concepts — queues, greedy nearest-driver selection, and Manhattan distance geometry — in the context of a real-world ride-hailing problem.
 
@@ -213,7 +213,7 @@ On startup the system loads demo data (3 drivers, 5 rides) and prints the driver
 
 ```
 =======================================================
-  CAB ALLOCATION SYSTEM
+  YARIVO RIDE SYSTEM
 =======================================================
   1. Submit a Ride Request
   2. Process Pending Queue (batch)

@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/v3.0.1/mapbox-gl.css" />
-  <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="./styles.css?v=mobile-layout-20261102" />
   <script src="https://api.mapbox.com/mapbox-gl-js/v3.0.1/mapbox-gl.js"></script>
 </head>
 <body>
@@ -96,7 +96,7 @@
 
         <!-- PICKUP CITY (SEARCH + AUTO-RECOMMEND) -->
         <div class="form-group">
-          <label class="form-label">PICKUP LOCATION</label>
+          <label class="form-label" id="pickupLocationLabel">PICKUP LOCATION</label>
           <div class="city-search-wrap">
             <div class="search-input-group">
               <span class="search-input-icon">📍</span>
@@ -104,6 +104,7 @@
               <button class="search-btn-inside" id="fromCitySearchBtn" type="button">🔍 Search</button>
             </div>
             <div id="fromCityDropdown" class="autocomplete-dropdown"></div>
+            <div id="pickupLocationLiveNote" class="muted" style="display:none;margin-top:6px">Using your live location as pickup until you sign out.</div>
             <!-- Hidden select for backend compatibility -->
             <select id="fromCity" class="form-control" style="display:none"></select>
           </div>
@@ -407,7 +408,7 @@
   </div>
 </div>
 
-<script type="module" src="./app.js?v=worldwide-search-20261031"></script>
+<script type="module" src="./app.js?v=live-location-center-20261102"></script>
 </body>
 </html>
 

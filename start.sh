@@ -47,13 +47,19 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-WEB_URL="http://localhost:5174/index.html?build=landing-home-20261031"
+WEB_URL="http://localhost:5174/index.html?build=live-location-center-20261102"
+SERVER_READY=0
 for _ in {1..20}; do
   if curl --silent --fail "http://localhost:5174/api/graph" >/dev/null 2>&1; then
+    SERVER_READY=1
     break
   fi
   sleep 0.25
 done
+if [[ "$SERVER_READY" != "1" ]]; then
+  echo "[ERROR] Web server did not become ready on port 5174."
+  exit 1
+fi
 
 echo "Yarivo dashboard: $WEB_URL"
 if command -v xdg-open >/dev/null 2>&1; then

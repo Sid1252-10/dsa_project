@@ -667,6 +667,35 @@ function setSession(user) {
   sessionStorage.setItem('cabsystem_session', JSON.stringify(user));
 }
 
+function continueToAppAfterPassengerLocationPrompt(redirect) {
+  if (currentRole !== 'passenger' || !navigator.geolocation || !window.isSecureContext) {
+    redirect();
+    return;
+  }
+
+  let finished = false;
+  let fallbackTimer;
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    clearTimeout(fallbackTimer);
+    redirect();
+  };
+
+  // Ask while the passenger is completing the login action. This also covers
+  // the one-click demo account buttons, which call handleLogin() directly.
+  fallbackTimer = setTimeout(finish, 25000);
+  try {
+    navigator.geolocation.getCurrentPosition(finish, finish, {
+      enableHighAccuracy: true,
+      maximumAge: 10000,
+      timeout: 20000
+    });
+  } catch (_) {
+    finish();
+  }
+}
+
 // ── Login ──────────────────────────────────────────────────
 function handleLogin() {
   const identifier = document.getElementById('loginEmail').value.trim();
@@ -724,7 +753,13 @@ function handleLogin() {
 
   const urlVehicle = new URLSearchParams(window.location.search).get('vehicle');
   const vehicleParam = urlVehicle ? `&vehicle=${encodeURIComponent(urlVehicle)}` : '';
-  setTimeout(() => { window.location.href = `./app.html?role=${currentRole}${vehicleParam}&build=worldwide-search-20261031`; }, 500);
+  const redirect = () => { window.location.href = `./app.html?role=${currentRole}${vehicleParam}&build=live-location-center-20261102`; };
+  if (currentRole === 'passenger') {
+    btn.textContent = 'Checking location permission…';
+    continueToAppAfterPassengerLocationPrompt(redirect);
+  } else {
+    setTimeout(redirect, 500);
+  }
 }
 
 // ── Register ───────────────────────────────────────────────
@@ -819,7 +854,13 @@ function handleRegister() {
 
   const urlVehicle = new URLSearchParams(window.location.search).get('vehicle');
   const vehicleParam = urlVehicle ? `&vehicle=${encodeURIComponent(urlVehicle)}` : '';
-  setTimeout(() => { window.location.href = `./app.html?role=${currentRole}${vehicleParam}&build=worldwide-search-20261031`; }, 800);
+  const redirect = () => { window.location.href = `./app.html?role=${currentRole}${vehicleParam}&build=live-location-center-20261102`; };
+  if (currentRole === 'passenger') {
+    btn.textContent = 'Checking location permission…';
+    continueToAppAfterPassengerLocationPrompt(redirect);
+  } else {
+    setTimeout(redirect, 800);
+  }
 }
 
 // ── Init ───────────────────────────────────────────────────

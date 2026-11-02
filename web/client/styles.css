@@ -65,9 +65,8 @@ select, input { font-family: inherit; }
   display: flex; align-items: center; justify-content: space-between;
   padding: 0 20px;
   box-shadow: var(--shadow);
-  display:flex;
-  flex-direction:column;
-  overflow:hidden;
+  flex-direction:row;
+  overflow:visible;
 }
 .map__header{
   padding:12px 14px;
@@ -893,6 +892,96 @@ select.form-control {
   border-radius: 999px;
   font-size: 12px;
   font-weight: 600;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   RESPONSIVE APP LAYOUT
+   ═══════════════════════════════════════════════════════════ */
+@media (max-width: 1000px) {
+  .two-col {
+    grid-template-columns: minmax(300px, 38%) minmax(0, 1fr);
+  }
+  .left-col,
+  .right-col { min-width: 0; }
+}
+
+@media (max-width: 900px) {
+  .screen {
+    height: 100vh;
+    height: 100dvh;
+    min-height: 100dvh;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    min-height: 58px;
+    height: auto;
+    padding: 8px 14px;
+    gap: 8px;
+  }
+  .topbar__brand { min-width: 0; flex-wrap: wrap; gap: 6px; }
+  .topbar__right { min-width: 0; flex-wrap: wrap; justify-content: flex-end; gap: 5px; }
+  .two-col {
+    flex: 0 0 auto;
+    min-height: auto;
+    grid-template-columns: minmax(0, 1fr);
+    overflow: visible;
+  }
+  .left-col {
+    max-height: none;
+    overflow: visible;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .right-col {
+    max-height: none;
+    min-height: 0;
+    overflow: visible;
+  }
+  .map-container {
+    flex: 0 0 auto;
+    height: 48vh;
+    height: min(54dvh, 440px);
+    min-height: 320px;
+  }
+  .mapbox-container { min-height: 0; }
+  .queues-row {
+    max-height: none;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .queue-panel {
+    max-height: 220px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .manager-body { flex: 0 0 auto; overflow: visible; }
+}
+
+@media (max-width: 600px) {
+  .topbar { align-items: flex-start; padding: 8px 10px; }
+  .topbar__brand { font-size: 14px; }
+  .topbar__brand-icon { font-size: 19px; }
+  .topbar__badge { font-size: 10px; padding: 3px 7px; }
+  .topbar__right { gap: 3px; }
+  .topbar__right .btn { height: 30px; padding: 0 7px; font-size: 11px; }
+  .user-profile-badge { max-width: 130px; gap: 5px; padding: 3px 7px; font-size: 11px; }
+  .user-profile-badge > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .panel__body,
+  .booking-form { padding: 12px; }
+  .vehicle-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .vehicle-card { min-width: 0; }
+  .search-input-group .form-control { min-width: 0; padding-left: 34px; padding-right: 72px; font-size: 13px; }
+  .search-btn-inside { padding: 0 7px; font-size: 10px; }
+  .map-header { align-items: flex-start; gap: 8px; }
+  .map-legend { flex-wrap: wrap; justify-content: flex-end; }
+  .map-status { line-height: 1.45; }
+  .queues-row { grid-template-columns: minmax(0, 1fr); }
+  .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .manager-body { padding: 12px; }
+  .manager-two-col { gap: 12px; }
 }
 .user-avatar-mini {
   width: 22px;

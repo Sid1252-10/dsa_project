@@ -47,6 +47,12 @@ const mapMarkers = { passenger: [], driver: [] };
 const mapViewSignatures = { passenger: '', driver: '' };
 const selectedPlaces = { from: null, to: null };
 let routeLookupTimer = null;
+let passengerLocationWatchId = null;
+let passengerLocationLocked = false;
+let hasCenteredOnLiveLocation = false;
+let liveLocationCenterPending = false;
+let lastLiveRouteRefreshAt = 0;
+let lastLiveRoutePickup = null;
 
 // ── Vehicle configuration ─────────────────────────────────
 const VEHICLE_CONFIG = {
@@ -261,7 +267,11 @@ function showScreen(name) {
     requestAnimationFrame(async () => {
       await initMap(name);
       maps[name]?.resize();
-      drawMap(name === 'passenger' ? 'mapSvg' : 'mapSvg2', name === 'passenger' ? 'mapStatus' : 'mapStatus2');
+      drawMap(
+        name === 'passenger' ? 'mapSvg' : 'mapSvg2',
+        name === 'passenger' ? 'mapStatus' : 'mapStatus2',
+        name !== 'passenger' || !passengerLocationLocked
+      );
     });
   }
 
@@ -278,8 +288,181 @@ function goHome() {
 }
 
 function logout() {
+  if (passengerLocationWatchId !== null && navigator.geolocation) {
+    navigator.geolocation.clearWatch(passengerLocationWatchId);
+    passengerLocationWatchId = null;
+  }
+  passengerLocationLocked = false;
+  hasCenteredOnLiveLocation = false;
+  liveLocationCenterPending = false;
   sessionStorage.removeItem('cabsystem_session');
-  window.location.href = './auth.html';
+  localStorage.removeItem('cabsystem_remember');
+  window.location.replace('./auth.html?loggedOut=1');
+}
+
+function setPassengerPickupLocked(locked) {
+  passengerLocationLocked = locked;
+  const input = $('fromCitySearch');
+  const label = $('pickupLocationLabel');
+  const liveNote = $('pickupLocationLiveNote');
+  const searchButton = $('fromCitySearchBtn');
+  const swapButton = $('swapBtn');
+  if (input) {
+    input.readOnly = locked;
+    input.title = locked ? 'Pickup follows your live location until you sign out.' : '';
+    if (!locked) input.placeholder = 'Search any address, city, or place';
+  }
+  if (label) label.textContent = locked ? 'PICKUP LOCATION · LIVE' : 'PICKUP LOCATION';
+  if (liveNote) liveNote.style.display = locked ? 'block' : 'none';
+  if (searchButton) {
+    searchButton.disabled = locked;
+    searchButton.title = locked ? 'Pickup is set to your live location.' : '';
+  }
+  if (swapButton) {
+    swapButton.disabled = locked;
+    swapButton.title = locked ? 'Your pickup is locked to your live location.' : 'Swap pickup and destination';
+  }
+}
+
+function stopPassengerLocationTracking(message) {
+  if (passengerLocationWatchId !== null && navigator.geolocation) {
+    navigator.geolocation.clearWatch(passengerLocationWatchId);
+  }
+  passengerLocationWatchId = null;
+  setPassengerPickupLocked(false);
+  if (message) {
+    const status = $('mapStatus');
+    if (status) status.textContent = message;
+  }
+}
+
+function distanceBetweenCoordinates(a, b) {
+  if (!a || !b) return Infinity;
+  const toRadians = value => value * Math.PI / 180;
+  const [lon1, lat1] = a;
+  const [lon2, lat2] = b;
+  const dLat = toRadians(lat2 - lat1);
+  const dLon = toRadians(lon2 - lon1);
+  const haversine = Math.sin(dLat / 2) ** 2 + Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 6371000 * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+}
+
+function centerPassengerMapOnLiveLocation() {
+  if (hasCenteredOnLiveLocation || selectedPlaces.to || !selectedPlaces.from?.coordinates) return;
+  const map = maps.passenger;
+  if (!map) return;
+
+  const centerWhenReady = () => {
+    liveLocationCenterPending = false;
+    if (hasCenteredOnLiveLocation || selectedPlaces.to || currentScreen !== 'passenger') return;
+    const coordinates = selectedPlaces.from?.coordinates;
+    if (!coordinates) return;
+    map.easeTo({ center: coordinates, zoom: 15, duration: 600 });
+    hasCenteredOnLiveLocation = true;
+    const status = $('mapStatus');
+    if (status) status.textContent = 'Map centered on your live pickup. You can zoom and pan freely.';
+  };
+
+  if (map.isStyleLoaded()) {
+    centerWhenReady();
+  } else if (!liveLocationCenterPending) {
+    liveLocationCenterPending = true;
+    map.once('load', centerWhenReady);
+    map.once('idle', centerWhenReady);
+  }
+}
+
+function updatePassengerLiveLocation(position) {
+  const longitude = position?.coords?.longitude;
+  const latitude = position?.coords?.latitude;
+  const accuracy = position?.coords?.accuracy;
+  if (!Number.isFinite(longitude) || !Number.isFinite(latitude) ||
+      longitude < -180 || longitude > 180 || latitude < -90 || latitude > 90) return;
+
+  // Browser geolocation may fall back to a coarse IP estimate (common on
+  // desktops without Linux location services configured). Do not lock a ride
+  // pickup to a position whose reported uncertainty spans multiple cities.
+  if (!Number.isFinite(accuracy) || accuracy > 5000) {
+    const status = $('mapStatus');
+    if (status) {
+      const estimate = Number.isFinite(accuracy) ? ` (about ±${(accuracy / 1000).toFixed(1)} km)` : '';
+      status.textContent = `Your device returned a low-accuracy location${estimate}. Pickup has not been locked; enable precise location services and try again. The map remains centered on Delhi.`;
+    }
+    return;
+  }
+
+  const coordinates = [longitude, latitude];
+  selectedPlaces.from = { name: 'My current location', coordinates };
+  const input = $('fromCitySearch');
+  const hiddenSelect = $('fromCity');
+  const dropdown = $('fromCityDropdown');
+  if (input) {
+    input.value = 'My current location';
+    input.readOnly = true;
+  }
+  if (hiddenSelect) {
+    if (!Array.from(hiddenSelect.options).some(option => option.value === 'My current location')) {
+      hiddenSelect.add(new Option('My current location', 'My current location'));
+    }
+    hiddenSelect.value = 'My current location';
+  }
+  if (dropdown) dropdown.classList.remove('open');
+  setPassengerPickupLocked(true);
+  const liveNote = $('pickupLocationLiveNote');
+  if (liveNote) liveNote.textContent = `Using your live location as pickup (reported accuracy ±${Math.round(accuracy)} m) until you sign out.`;
+
+  const now = Date.now();
+  const shouldRefreshRoute = selectedPlaces.to && (
+    !lastLiveRouteRefreshAt ||
+    now - lastLiveRouteRefreshAt >= 15000 ||
+    distanceBetweenCoordinates(lastLiveRoutePickup, coordinates) >= 250
+  );
+  if (shouldRefreshRoute) {
+    lastLiveRouteRefreshAt = now;
+    lastLiveRoutePickup = coordinates;
+    onRouteEndpointsChanged(false);
+  } else {
+    drawMap('mapSvg', 'mapStatus', false);
+    const status = $('mapStatus');
+    if (status) status.textContent = selectedPlaces.to
+      ? 'Live pickup updated. The route will refresh as your location changes.'
+      : 'Pickup is locked to your live location. Search for a destination.';
+  }
+
+  centerPassengerMapOnLiveLocation();
+}
+
+function startPassengerLocationTracking() {
+  if (passengerLocationWatchId !== null) return;
+  if (!window.isSecureContext) {
+    stopPassengerLocationTracking('Live location requires a secure page. Open Yarivo on localhost or HTTPS; the map is centered on Delhi for now.');
+    return;
+  }
+  if (!navigator.geolocation) {
+    stopPassengerLocationTracking('Location is unavailable. The map is centered on Delhi; search for a pickup and destination.');
+    return;
+  }
+
+  const status = $('mapStatus');
+  if (status) status.textContent = 'Requesting permission to use your live location as pickup…';
+  try {
+    passengerLocationWatchId = navigator.geolocation.watchPosition(
+      updatePassengerLiveLocation,
+      error => {
+        if (error?.code === 1) {
+          stopPassengerLocationTracking('Location permission was not granted. The map is centered on Delhi; search for a pickup and destination.');
+          return;
+        }
+        const status = $('mapStatus');
+        if (status) status.textContent = selectedPlaces.from?.name === 'My current location'
+          ? 'Live location is temporarily unavailable. The pickup will use your last detected location.'
+          : 'Could not get your location yet. The map is centered on Delhi; searching for a pickup is still available.';
+      },
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 }
+    );
+  } catch (_) {
+    stopPassengerLocationTracking('Location is unavailable. The map is centered on Delhi; search for a pickup and destination.');
+  }
 }
 
 // ── Vehicle Selection ─────────────────────────────────────
@@ -326,6 +509,10 @@ function setupCityAutocomplete(searchInputId, hiddenSelectId, dropdownId, search
   const placeKey = searchInputId.startsWith('from') ? 'from' : 'to';
 
   async function renderSuggestions(query = '') {
+    if (placeKey === 'from' && passengerLocationLocked) {
+      dropdown.classList.remove('open');
+      return;
+    }
     const cleanQuery = query.trim();
     const sequence = ++searchSequence;
     if (cleanQuery.length < 2) {
@@ -340,6 +527,10 @@ function setupCityAutocomplete(searchInputId, hiddenSelectId, dropdownId, search
       const url = new URL('https://api.mapbox.com/search/searchbox/v1/suggest');
       url.search = new URLSearchParams({ q: cleanQuery, access_token: MAPBOX_TOKEN, session_token: sessionToken, limit: '6', language: 'en' });
       const response = await fetch(url);
+      if (placeKey === 'from' && passengerLocationLocked) {
+        dropdown.classList.remove('open');
+        return;
+      }
       if (sequence !== searchSequence) return;
       const data = await response.json();
       if (!response.ok) throw new Error(data.message || data.error || `Place search failed (${response.status}). Check the token’s Search Box access and network.`);
@@ -375,7 +566,10 @@ function setupCityAutocomplete(searchInputId, hiddenSelectId, dropdownId, search
       url.search = new URLSearchParams({ access_token: MAPBOX_TOKEN, session_token: choiceSession, language: 'en' });
       const response = await fetch(url);
       const data = await response.json();
-      if (input.value !== chosenQuery) return;
+      if (input.value !== chosenQuery) {
+        if (placeKey === 'from' && passengerLocationLocked) dropdown.classList.remove('open');
+        return;
+      }
       const feature = data.features?.[0];
       if (!response.ok || !feature) throw new Error(data.message || 'Could not load that location. Please choose another result.');
       const properties = feature.properties || {};
@@ -384,6 +578,10 @@ function setupCityAutocomplete(searchInputId, hiddenSelectId, dropdownId, search
         : feature.geometry?.coordinates;
       if (!Array.isArray(coordinates) || coordinates.length < 2) throw new Error('That location has no usable map coordinates.');
       const place = { name: properties.full_address || [properties.name_preferred || properties.name, properties.place_formatted].filter(Boolean).join(', '), coordinates };
+      if (placeKey === 'from' && passengerLocationLocked) {
+        dropdown.classList.remove('open');
+        return;
+      }
       sessionToken = newSearchSessionToken();
       selectedPlaces[placeKey] = place;
       input.value = place.name;
@@ -396,8 +594,12 @@ function setupCityAutocomplete(searchInputId, hiddenSelectId, dropdownId, search
     }
   }
 
-  input.addEventListener('focus', () => { if (input.value) renderSuggestions(input.value); });
+  input.addEventListener('focus', () => {
+    if (placeKey === 'from' && passengerLocationLocked) return;
+    if (input.value) renderSuggestions(input.value);
+  });
   input.addEventListener('input', () => {
+    if (placeKey === 'from' && passengerLocationLocked) return;
     activeIndex = -1;
     places = [];
     selectedPlaces[placeKey] = null;
@@ -406,7 +608,12 @@ function setupCityAutocomplete(searchInputId, hiddenSelectId, dropdownId, search
     clearTimeout(searchTimer);
     searchTimer = setTimeout(() => renderSuggestions(input.value), 300);
   });
-  if (searchBtn) searchBtn.addEventListener('click', (event) => { event.preventDefault(); input.focus(); renderSuggestions(input.value); });
+  if (searchBtn) searchBtn.addEventListener('click', (event) => {
+    event.preventDefault();
+    if (placeKey === 'from' && passengerLocationLocked) return;
+    input.focus();
+    renderSuggestions(input.value);
+  });
   input.addEventListener('keydown', (event) => {
     const items = dropdown.querySelectorAll('.autocomplete-item');
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
@@ -427,6 +634,7 @@ function setupCityAutocomplete(searchInputId, hiddenSelectId, dropdownId, search
   });
 
   input.chooseCity = (id, name) => {
+    if (placeKey === 'from' && passengerLocationLocked) return;
     const city = graph?.cities?.find(item => item.id === id);
     if (!city || !CITY_COORDS[city.id]) return;
     const place = { name: `${city.name}, Punjab, India`, coordinates: CITY_COORDS[city.id] };
@@ -439,6 +647,7 @@ function setupCityAutocomplete(searchInputId, hiddenSelectId, dropdownId, search
 }
 
 function quickSelectCity(fieldBaseId, cityId) {
+  if (fieldBaseId === 'fromCity' && passengerLocationLocked) return;
   const searchInput  = $(`${fieldBaseId}Search`);
   const hiddenSelect = $(fieldBaseId);
   const city = graph?.cities?.find(c => c.id === cityId);
@@ -478,7 +687,7 @@ function onMapCityClicked(cityId, cName) {
 }
 
 // ── Real-Time Route Preview on Map ────────────────────────
-function onRouteEndpointsChanged() {
+function onRouteEndpointsChanged(fitView = true) {
   clearTimeout(routeLookupTimer);
   const from = selectedPlaces.from;
   const to = selectedPlaces.to;
@@ -486,18 +695,18 @@ function onRouteEndpointsChanged() {
     selectedRoute = null;
     const status = $('mapStatus');
     if (status) status.textContent = 'Search worldwide locations to preview a driving route.';
-    drawMap('mapSvg', 'mapStatus');
+    drawMap('mapSvg', 'mapStatus', fitView);
     return;
   }
   if (from.coordinates[0] === to.coordinates[0] && from.coordinates[1] === to.coordinates[1]) {
     selectedRoute = null;
     const status = $('mapStatus');
     if (status) status.textContent = 'Choose two different locations.';
-    drawMap('mapSvg', 'mapStatus');
+    drawMap('mapSvg', 'mapStatus', fitView);
     return;
   }
   selectedRoute = null;
-  drawMap('mapSvg', 'mapStatus');
+  drawMap('mapSvg', 'mapStatus', fitView);
   const signature = JSON.stringify([from.coordinates, to.coordinates]);
   routeLookupTimer = setTimeout(async () => {
     try {
@@ -518,12 +727,12 @@ function onRouteEndpointsChanged() {
       const baseFare = Math.round((55 + 20 * selectedRoute.distance) * vCfg.multiplier);
       const status = $('mapStatus');
       if (status) status.innerHTML = `<strong>Driving route:</strong> ${escapeHtml(from.name)} → ${escapeHtml(to.name)} · <strong>${selectedRoute.distance} km</strong> · ${vCfg.icon} <strong>Est. Fare: ₹${baseFare}</strong>`;
-      drawMap('mapSvg', 'mapStatus');
+      drawMap('mapSvg', 'mapStatus', fitView);
     } catch (error) {
       selectedRoute = null;
       const status = $('mapStatus');
       if (status) status.textContent = error.message;
-      drawMap('mapSvg', 'mapStatus');
+      drawMap('mapSvg', 'mapStatus', fitView);
     }
   }, 0);
 }
@@ -552,6 +761,7 @@ async function initMap(role = currentScreen) {
       center: [77.2090, 28.6139],
       zoom: 7.5,
     });
+    map.addControl(new mapboxgl.NavigationControl({ showCompass: true }), 'top-right');
     maps[role] = map;
 
     await new Promise((resolve, reject) => {
@@ -563,7 +773,8 @@ async function initMap(role = currentScreen) {
       console.error('Mapbox map error:', event.error || event);
       if (status) status.textContent = 'Mapbox could not load map data. Check the token, allowed URLs, and network.';
     });
-    drawMap(config.svgId, config.statusId);
+    drawMap(config.svgId, config.statusId, role !== 'passenger' || !passengerLocationLocked);
+    if (role === 'passenger') centerPassengerMapOnLiveLocation();
     return map;
   } catch (err) {
     maps[role] = null;
@@ -573,7 +784,7 @@ async function initMap(role = currentScreen) {
   }
 }
 
-function drawMap(mapTargetId = 'mapSvg', statusId = 'mapStatus') {
+function drawMap(mapTargetId = 'mapSvg', statusId = 'mapStatus', fitView = true) {
   const role = mapTargetId === 'mapSvg2' || mapTargetId === 'mapContainer2' ? 'driver' : 'passenger';
   const map = maps[role];
   if (!map || !graph || !map.isStyleLoaded()) return;
@@ -586,7 +797,9 @@ function drawMap(mapTargetId = 'mapSvg', statusId = 'mapStatus') {
   mapMarkers[role].forEach(marker => marker.remove());
   mapMarkers[role] = [];
   const locations = [
-    selectedRoute?.fromLocation || (role === 'passenger' ? selectedPlaces.from : null),
+    role === 'passenger' && passengerLocationLocked
+      ? selectedPlaces.from
+      : selectedRoute?.fromLocation || (role === 'passenger' ? selectedPlaces.from : null),
     selectedRoute?.toLocation || (role === 'passenger' ? selectedPlaces.to : null),
   ].filter(Boolean);
   locations.forEach((location, index) => {
@@ -598,11 +811,11 @@ function drawMap(mapTargetId = 'mapSvg', statusId = 'mapStatus') {
     ? selectedRoute.geometry.coordinates
     : locations.map(location => location.coordinates);
   const viewSignature = JSON.stringify(routeCoordinates);
-  if (routeCoordinates.length && mapViewSignatures[role] !== viewSignature) {
+  if (fitView && routeCoordinates.length && mapViewSignatures[role] !== viewSignature) {
     const bounds = routeCoordinates.reduce((b, point) => b.extend(point), new mapboxgl.LngLatBounds(routeCoordinates[0], routeCoordinates[0]));
     map.fitBounds(bounds, { padding: 48, maxZoom: 14 });
+    mapViewSignatures[role] = viewSignature;
   }
-  mapViewSignatures[role] = viewSignature;
 }
 
 // ── Countdown Ticker ──────────────────────────────────────
@@ -877,13 +1090,14 @@ function resetPassengerForm() {
   $('shareSection').classList.add('hidden');
   $('shareCandidates').innerHTML = '';
   lastRequestId = null;
-  selectedPlaces.from = null;
+  if (!passengerLocationLocked) selectedPlaces.from = null;
   selectedPlaces.to = null;
-  if ($('fromCity')) $('fromCity').value = '';
+  if ($('fromCity')) $('fromCity').value = selectedPlaces.from?.name || '';
   if ($('toCity')) $('toCity').value = '';
-  if ($('fromCitySearch')) $('fromCitySearch').value = '';
+  if ($('fromCitySearch')) $('fromCitySearch').value = selectedPlaces.from?.name === 'My current location' ? 'My current location' : '';
   if ($('toCitySearch')) $('toCitySearch').value = '';
   selectedRoute = null;
+  onRouteEndpointsChanged();
   drawMap('mapSvg', 'mapStatus');
 }
 
@@ -1221,7 +1435,7 @@ async function refreshAll() {
   // Screen-specific renders
   if (currentScreen === 'passenger') {
     renderQueues();
-    drawMap('mapSvg', 'mapStatus');
+    drawMap('mapSvg', 'mapStatus', !passengerLocationLocked);
     renderIncomingShares($('userName')?.value?.trim());
   }
   if (currentScreen === 'driver') {
@@ -1248,6 +1462,7 @@ function wireEvents() {
 
   // Swap cities button
   $('swapBtn')?.addEventListener('click', () => {
+    if (passengerLocationLocked) return;
     const fromInput = $('fromCitySearch');
     const toInput   = $('toCitySearch');
     const fromSelect = $('fromCity');
@@ -1313,7 +1528,11 @@ function checkSessionAndRole() {
     session = JSON.parse(sessionStorage.getItem('cabsystem_session') || 'null');
   } catch (_) {}
 
-  const role = urlRole || session?.role || 'passenger';
+  if (!session || !['passenger', 'driver', 'manager'].includes(session.role) || (urlRole && urlRole !== session.role)) {
+    window.location.replace('./auth.html?loggedOut=1');
+    return false;
+  }
+  const role = session.role;
 
   // Apply user info to labels if available
   if (session?.name) {
@@ -1347,6 +1566,8 @@ function checkSessionAndRole() {
   }
 
   showScreen(role);
+  if (role === 'passenger' && session?.role === 'passenger') startPassengerLocationTracking();
+  return true;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1355,8 +1576,7 @@ function checkSessionAndRole() {
 
 async function main() {
   wireEvents();
-  await refreshAll();
-  checkSessionAndRole();
+  if (!checkSessionAndRole()) return;
   await initMap(currentScreen);
   await refreshAll();
 

@@ -38,11 +38,18 @@ if errorlevel 1 goto :error
 if errorlevel 1 goto :error
 
 set "PORT=5174"
-set "WEB_URL=http://localhost:5174/index.html?build=landing-home-20261031"
+set "WEB_URL=http://localhost:5174/index.html?build=live-location-center-20261102"
 start "Yarivo Web Server" /min "%VENV_PYTHON%" "%~dp0web\server\server.py"
 if errorlevel 1 goto :error
 
-timeout /t 2 /nobreak >nul
+for /l %%i in (1,1,20) do (
+    "%VENV_PYTHON%" -c "import urllib.request; urllib.request.urlopen('http://localhost:5174/api/graph', timeout=1)" >nul 2>&1 && goto :server_ready
+    timeout /t 1 /nobreak >nul
+)
+echo [ERROR] Web server did not become ready on port 5174.
+goto :error
+
+:server_ready
 echo Yarivo dashboard: %WEB_URL%
 start "" "%WEB_URL%"
 

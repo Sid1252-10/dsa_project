@@ -1,4 +1,4 @@
-// ═══════════════════════════════════════════════════════════
+﻿// ═══════════════════════════════════════════════════════════
 // Yarivo — Complete Client App Logic
 // Interactive Mapbox Map + Smart City Search + Full DSA Flow
 // ═══════════════════════════════════════════════════════════
@@ -49,6 +49,7 @@ const selectedPlaces = { from: null, to: null };
 let routeLookupTimer = null;
 let passengerLocationWatchId = null;
 let passengerLocationLocked = false;
+let userOverrodeLivePickup = false;
 let hasCenteredOnLiveLocation = false;
 let liveLocationCenterPending = false;
 let lastLiveRouteRefreshAt = 0;
@@ -270,7 +271,7 @@ function showScreen(name) {
       drawMap(
         name === 'passenger' ? 'mapSvg' : 'mapSvg2',
         name === 'passenger' ? 'mapStatus' : 'mapStatus2',
-        name !== 'passenger' || !passengerLocationLocked
+        true  // always allow fitView; GPS no longer locks the view
       );
     });
   }
@@ -293,6 +294,7 @@ function logout() {
     passengerLocationWatchId = null;
   }
   passengerLocationLocked = false;
+  userOverrodeLivePickup = false;
   hasCenteredOnLiveLocation = false;
   liveLocationCenterPending = false;
   sessionStorage.removeItem('cabsystem_session');
@@ -305,23 +307,13 @@ function setPassengerPickupLocked(locked) {
   const input = $('fromCitySearch');
   const label = $('pickupLocationLabel');
   const liveNote = $('pickupLocationLiveNote');
-  const searchButton = $('fromCitySearchBtn');
-  const swapButton = $('swapBtn');
   if (input) {
-    input.readOnly = locked;
-    input.title = locked ? 'Pickup follows your live location until you sign out.' : '';
+    input.readOnly = false;  // user can always override GPS suggestion
+    input.title = locked ? 'GPS suggested this pickup — you can type a different one.' : '';
     if (!locked) input.placeholder = 'Search any address, city, or place';
   }
-  if (label) label.textContent = locked ? 'PICKUP LOCATION · LIVE' : 'PICKUP LOCATION';
+  if (label) label.textContent = locked ? 'PICKUP LOCATION · GPS' : 'PICKUP LOCATION';
   if (liveNote) liveNote.style.display = locked ? 'block' : 'none';
-  if (searchButton) {
-    searchButton.disabled = locked;
-    searchButton.title = locked ? 'Pickup is set to your live location.' : '';
-  }
-  if (swapButton) {
-    swapButton.disabled = locked;
-    swapButton.title = locked ? 'Your pickup is locked to your live location.' : 'Swap pickup and destination';
-  }
 }
 
 function stopPassengerLocationTracking(message) {
@@ -379,6 +371,9 @@ function updatePassengerLiveLocation(position) {
   if (!Number.isFinite(longitude) || !Number.isFinite(latitude) ||
       longitude < -180 || longitude > 180 || latitude < -90 || latitude > 90) return;
 
+  // If the user has already manually overridden the pickup, keep their choice
+  if (userOverrodeLivePickup) return;
+
   // Browser geolocation may fall back to a coarse IP estimate (common on
   // desktops without Linux location services configured). Do not lock a ride
   // pickup to a position whose reported uncertainty spans multiple cities.
@@ -398,7 +393,7 @@ function updatePassengerLiveLocation(position) {
   const dropdown = $('fromCityDropdown');
   if (input) {
     input.value = 'My current location';
-    input.readOnly = true;
+    input.readOnly = false;  // user can override GPS suggestion
   }
   if (hiddenSelect) {
     if (!Array.from(hiddenSelect.options).some(option => option.value === 'My current location')) {
@@ -509,10 +504,6 @@ function setupCityAutocomplete(searchInputId, hiddenSelectId, dropdownId, search
   const placeKey = searchInputId.startsWith('from') ? 'from' : 'to';
 
   async function renderSuggestions(query = '') {
-    if (placeKey === 'from' && passengerLocationLocked) {
-      dropdown.classList.remove('open');
-      return;
-    }
     const cleanQuery = query.trim();
     const sequence = ++searchSequence;
     if (cleanQuery.length < 2) {
@@ -527,10 +518,6 @@ function setupCityAutocomplete(searchInputId, hiddenSelectId, dropdownId, search
       const url = new URL('https://api.mapbox.com/search/searchbox/v1/suggest');
       url.search = new URLSearchParams({ q: cleanQuery, access_token: MAPBOX_TOKEN, session_token: sessionToken, limit: '6', language: 'en' });
       const response = await fetch(url);
-      if (placeKey === 'from' && passengerLocationLocked) {
-        dropdown.classList.remove('open');
-        return;
-      }
       if (sequence !== searchSequence) return;
       const data = await response.json();
       if (!response.ok) throw new Error(data.message || data.error || `Place search failed (${response.status}). Check the token’s Search Box access and network.`);
@@ -566,10 +553,7 @@ function setupCityAutocomplete(searchInputId, hiddenSelectId, dropdownId, search
       url.search = new URLSearchParams({ access_token: MAPBOX_TOKEN, session_token: choiceSession, language: 'en' });
       const response = await fetch(url);
       const data = await response.json();
-      if (input.value !== chosenQuery) {
-        if (placeKey === 'from' && passengerLocationLocked) dropdown.classList.remove('open');
-        return;
-      }
+      if (input.value !== chosenQuery) { return; }
       const feature = data.features?.[0];
       if (!response.ok || !feature) throw new Error(data.message || 'Could not load that location. Please choose another result.');
       const properties = feature.properties || {};
@@ -578,16 +562,14 @@ function setupCityAutocomplete(searchInputId, hiddenSelectId, dropdownId, search
         : feature.geometry?.coordinates;
       if (!Array.isArray(coordinates) || coordinates.length < 2) throw new Error('That location has no usable map coordinates.');
       const place = { name: properties.full_address || [properties.name_preferred || properties.name, properties.place_formatted].filter(Boolean).join(', '), coordinates };
-      if (placeKey === 'from' && passengerLocationLocked) {
-        dropdown.classList.remove('open');
-        return;
-      }
       sessionToken = newSearchSessionToken();
       selectedPlaces[placeKey] = place;
       input.value = place.name;
       if (hiddenSelect) hiddenSelect.value = place.name;
       input.dataset.selectedCityId = place.name;
       dropdown.classList.remove('open');
+      // Mark that user has manually chosen a pickup — stop GPS overriding it
+      if (placeKey === 'from') userOverrodeLivePickup = true;
       onRouteEndpointsChanged();
     } catch (error) {
       dropdown.innerHTML = `<div class="autocomplete-header">${escapeHtml(error.message)}</div>`;
@@ -595,22 +577,21 @@ function setupCityAutocomplete(searchInputId, hiddenSelectId, dropdownId, search
   }
 
   input.addEventListener('focus', () => {
-    if (placeKey === 'from' && passengerLocationLocked) return;
     if (input.value) renderSuggestions(input.value);
   });
   input.addEventListener('input', () => {
-    if (placeKey === 'from' && passengerLocationLocked) return;
     activeIndex = -1;
     places = [];
     selectedPlaces[placeKey] = null;
     if (hiddenSelect) hiddenSelect.value = '';
+    // User is manually editing pickup — stop GPS overriding it
+    if (placeKey === 'from') { userOverrodeLivePickup = true; setPassengerPickupLocked(false); }
     onRouteEndpointsChanged();
     clearTimeout(searchTimer);
     searchTimer = setTimeout(() => renderSuggestions(input.value), 300);
   });
   if (searchBtn) searchBtn.addEventListener('click', (event) => {
     event.preventDefault();
-    if (placeKey === 'from' && passengerLocationLocked) return;
     input.focus();
     renderSuggestions(input.value);
   });
@@ -634,7 +615,6 @@ function setupCityAutocomplete(searchInputId, hiddenSelectId, dropdownId, search
   });
 
   input.chooseCity = (id, name) => {
-    if (placeKey === 'from' && passengerLocationLocked) return;
     const city = graph?.cities?.find(item => item.id === id);
     if (!city || !CITY_COORDS[city.id]) return;
     const place = { name: `${city.name}, Punjab, India`, coordinates: CITY_COORDS[city.id] };
@@ -647,7 +627,6 @@ function setupCityAutocomplete(searchInputId, hiddenSelectId, dropdownId, search
 }
 
 function quickSelectCity(fieldBaseId, cityId) {
-  if (fieldBaseId === 'fromCity' && passengerLocationLocked) return;
   const searchInput  = $(`${fieldBaseId}Search`);
   const hiddenSelect = $(fieldBaseId);
   const city = graph?.cities?.find(c => c.id === cityId);
@@ -773,7 +752,7 @@ async function initMap(role = currentScreen) {
       console.error('Mapbox map error:', event.error || event);
       if (status) status.textContent = 'Mapbox could not load map data. Check the token, allowed URLs, and network.';
     });
-    drawMap(config.svgId, config.statusId, role !== 'passenger' || !passengerLocationLocked);
+    drawMap(config.svgId, config.statusId, true);
     if (role === 'passenger') centerPassengerMapOnLiveLocation();
     return map;
   } catch (err) {
@@ -797,9 +776,7 @@ function drawMap(mapTargetId = 'mapSvg', statusId = 'mapStatus', fitView = true)
   mapMarkers[role].forEach(marker => marker.remove());
   mapMarkers[role] = [];
   const locations = [
-    role === 'passenger' && passengerLocationLocked
-      ? selectedPlaces.from
-      : selectedRoute?.fromLocation || (role === 'passenger' ? selectedPlaces.from : null),
+    selectedRoute?.fromLocation || (role === 'passenger' ? selectedPlaces.from : null),
     selectedRoute?.toLocation || (role === 'passenger' ? selectedPlaces.to : null),
   ].filter(Boolean);
   locations.forEach((location, index) => {
@@ -1090,7 +1067,8 @@ function resetPassengerForm() {
   $('shareSection').classList.add('hidden');
   $('shareCandidates').innerHTML = '';
   lastRequestId = null;
-  if (!passengerLocationLocked) selectedPlaces.from = null;
+  selectedPlaces.from = null;
+  userOverrodeLivePickup = false;  // reset so GPS can suggest pickup again
   selectedPlaces.to = null;
   if ($('fromCity')) $('fromCity').value = selectedPlaces.from?.name || '';
   if ($('toCity')) $('toCity').value = '';
@@ -1435,7 +1413,7 @@ async function refreshAll() {
   // Screen-specific renders
   if (currentScreen === 'passenger') {
     renderQueues();
-    drawMap('mapSvg', 'mapStatus', !passengerLocationLocked);
+    drawMap('mapSvg', 'mapStatus');
     renderIncomingShares($('userName')?.value?.trim());
   }
   if (currentScreen === 'driver') {
@@ -1462,7 +1440,8 @@ function wireEvents() {
 
   // Swap cities button
   $('swapBtn')?.addEventListener('click', () => {
-    if (passengerLocationLocked) return;
+    // If GPS was suggesting pickup, swapping clears that — user takes manual control
+    if (passengerLocationLocked) { userOverrodeLivePickup = true; setPassengerPickupLocked(false); }
     const fromInput = $('fromCitySearch');
     const toInput   = $('toCitySearch');
     const fromSelect = $('fromCity');

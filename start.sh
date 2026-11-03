@@ -47,7 +47,7 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-WEB_URL="http://localhost:5174/index.html?build=live-location-center-20261102"
+WEB_URL="http://localhost:5174/index.html?build=request-cancellation-20261103"
 SERVER_READY=0
 for _ in {1..20}; do
   if curl --silent --fail "http://localhost:5174/api/graph" >/dev/null 2>&1; then

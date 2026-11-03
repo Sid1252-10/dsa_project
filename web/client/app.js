@@ -10,6 +10,8 @@ let graph            = null;
 let appState         = null;
 let selectedRoute    = null;
 let lastRequestId    = null;
+let selectedDriverPreviewRequestId = null;
+let selectedDriverRideId = null;
 let currentScreen    = null;
 let autoRefreshTimer = null;
 let selectedVehicle  = 'sedan';
@@ -63,7 +65,7 @@ const VEHICLE_CONFIG = {
     capacity: 2,
     icon: '🚗',
     plate: 'PB-08-CD-5678',
-    multiplier: 1.0,
+    surcharge: 0,
     desc: 'Hatchback · Solo/duo travel'
   },
   sedan: {
@@ -72,7 +74,7 @@ const VEHICLE_CONFIG = {
     capacity: 4,
     icon: '🚙',
     plate: 'PB-10-AB-1234',
-    multiplier: 1.25,
+    surcharge: 75,
     desc: 'Comfortable sedan · Up to 4 riders'
   },
   suv: {
@@ -81,7 +83,7 @@ const VEHICLE_CONFIG = {
     capacity: 6,
     icon: '🚐',
     plate: 'PB-03-EF-9012',
-    multiplier: 1.6,
+    surcharge: 120,
     desc: 'Spacious SUV · Up to 6 passengers'
   },
   premium: {
@@ -90,17 +92,17 @@ const VEHICLE_CONFIG = {
     capacity: 4,
     icon: '⭐',
     plate: 'PB-02-GH-3456',
-    multiplier: 2.2,
+    surcharge: 200,
     desc: 'Luxury executive travel'
   },
   shared: {
     name: 'Shared',
     model: 'Shared Cab',
-    capacity: 2,
+    capacity: 6,
     icon: '🤝',
     plate: 'PB-65-SH-7788',
-    multiplier: 0.65,
-    desc: 'Affordable shared ride'
+    surcharge: 75,
+    desc: 'Legacy shared ride'
   }
 };
 
@@ -108,11 +110,16 @@ const DRIVER_VEHICLES = {
   d1: { model: 'Sedan (Dzire)', plate: 'PB-10-AB-1234', type: 'sedan', icon: '🚙' },
   d2: { model: 'Mini (Swift)', plate: 'PB-08-CD-5678', type: 'mini', icon: '🚗' },
   d3: { model: 'SUV (Ertiga)', plate: 'PB-03-EF-9012', type: 'suv', icon: '🚐' },
-  d4: { model: 'Premium (Camry)', plate: 'PB-02-GH-3456', type: 'premium', icon: '⭐' }
+  d4: { model: 'Premium (Camry)', plate: 'PB-02-GH-3456', type: 'premium', icon: '⭐' },
+  d5: { model: 'Sedan (Dzire)', plate: 'CH-01-KB-4104', type: 'sedan', icon: '🚙' },
+  d6: { model: 'Mini (Swift)', plate: 'PB-65-MH-4105', type: 'mini', icon: '🚗' },
+  d7: { model: 'SUV (Ertiga)', plate: 'PB-10-AS-4106', type: 'suv', icon: '🚐' },
+  d8: { model: 'Premium (Camry)', plate: 'PB-11-JK-4107', type: 'premium', icon: '⭐' }
 };
 
 // ── Persistent Request Vehicle Store ──────────────────────
-function getRequestVehicle(requestId) {
+function getRequestVehicle(requestId, request = null) {
+  if (request?.vehicleType && VEHICLE_CONFIG[request.vehicleType]) return request.vehicleType;
   try {
     const map = JSON.parse(localStorage.getItem('cabsystem_request_vehicles') || '{}');
     return map[requestId] || 'sedan';
@@ -271,7 +278,7 @@ function showScreen(name) {
       drawMap(
         name === 'passenger' ? 'mapSvg' : 'mapSvg2',
         name === 'passenger' ? 'mapStatus' : 'mapStatus2',
-        true  // always allow fitView; GPS no longer locks the view
+        name !== 'passenger' || !passengerLocationLocked || Boolean(selectedPlaces.to)
       );
     });
   }
@@ -462,19 +469,20 @@ function startPassengerLocationTracking() {
 
 // ── Vehicle Selection ─────────────────────────────────────
 function selectVehicle(type) {
-  selectedVehicle = type;
+  const legacySharedSelection = type === 'shared';
+  selectedVehicle = legacySharedSelection ? 'sedan' : type;
   const hiddenInput = $('selectedVehicleType');
-  if (hiddenInput) hiddenInput.value = type;
+  if (hiddenInput) hiddenInput.value = selectedVehicle;
 
   document.querySelectorAll('.vehicle-card').forEach(card => {
-    card.classList.toggle('active', card.dataset.vehicle === type);
+    card.classList.toggle('active', card.dataset.vehicle === selectedVehicle);
   });
 
-  const config = VEHICLE_CONFIG[type];
+  const config = VEHICLE_CONFIG[selectedVehicle];
   if (!config) return;
 
   const sharingCheck = $('wantsSharing');
-  if (sharingCheck && type === 'shared') {
+  if (sharingCheck && legacySharedSelection) {
     sharingCheck.checked = true;
   }
 
@@ -484,7 +492,40 @@ function selectVehicle(type) {
   }
 
   // Update live preview if route is active
-  onRouteEndpointsChanged();
+  renderFarePreview();
+  if (selectedPlaces.from && selectedPlaces.to) onRouteEndpointsChanged();
+}
+
+function currentFareEstimate() {
+  if (!selectedRoute?.distance) return null;
+  const vehicle = VEHICLE_CONFIG[selectedVehicle] || VEHICLE_CONFIG.sedan;
+  const distanceKm = Number(selectedRoute.distance);
+  if (!Number.isFinite(distanceKm) || distanceKm <= 0) return null;
+  const soloFare = Math.round(distanceKm * 50 + vehicle.surcharge);
+  const sharing = Boolean($('wantsSharing')?.checked);
+  const riderCount = Math.max(1, Math.min(vehicle.capacity, parseInt($('numPersons')?.value || '1', 10) || 1));
+  const totalFare = sharing ? Math.round(soloFare * (1 + 0.4 * (riderCount - 1))) : soloFare;
+  return { distanceKm, soloFare, totalFare, perPerson: Math.round(totalFare / riderCount), riderCount, sharing, vehicle };
+}
+
+function renderFarePreview() {
+  const preview = $('farePreview');
+  if (!preview) return;
+  const estimate = currentFareEstimate();
+  if (!estimate) {
+    preview.classList.add('hidden');
+    preview.innerHTML = '';
+    return;
+  }
+  preview.classList.remove('hidden');
+  const { distanceKm, totalFare, perPerson, riderCount, sharing, vehicle } = estimate;
+  preview.innerHTML = `
+    <div class="fare-preview__title">Estimated fare</div>
+    <div class="fare-preview__math">${distanceKm.toFixed(2)} km × ₹50/km + ₹${vehicle.surcharge} ${vehicle.name} fee</div>
+    <div class="fare-preview__total">₹${totalFare.toLocaleString('en-IN')} <span>${sharing ? 'estimated shared total' : 'total cab fare'}</span></div>
+    ${sharing ? `<div class="fare-preview__per-person">About ₹${perPerson.toLocaleString('en-IN')} per person · ${riderCount} same-distance passenger${riderCount === 1 ? '' : 's'}</div>
+      <div class="fare-preview__note">Shared fares are adjusted by each rider’s trip distance when matched.</div>` : ''}
+  `;
 }
 
 // ── Worldwide Mapbox place search ─────────────────────────
@@ -561,7 +602,11 @@ function setupCityAutocomplete(searchInputId, hiddenSelectId, dropdownId, search
         ? [properties.coordinates.longitude, properties.coordinates.latitude]
         : feature.geometry?.coordinates;
       if (!Array.isArray(coordinates) || coordinates.length < 2) throw new Error('That location has no usable map coordinates.');
-      const place = { name: properties.full_address || [properties.name_preferred || properties.name, properties.place_formatted].filter(Boolean).join(', '), coordinates };
+      const place = {
+        name: properties.full_address || [properties.name_preferred || properties.name, properties.place_formatted].filter(Boolean).join(', '),
+        coordinates,
+        featureType: properties.feature_type || feature.feature_type || null
+      };
       sessionToken = newSearchSessionToken();
       selectedPlaces[placeKey] = place;
       input.value = place.name;
@@ -569,7 +614,10 @@ function setupCityAutocomplete(searchInputId, hiddenSelectId, dropdownId, search
       input.dataset.selectedCityId = place.name;
       dropdown.classList.remove('open');
       // Mark that user has manually chosen a pickup — stop GPS overriding it
-      if (placeKey === 'from') userOverrodeLivePickup = true;
+      if (placeKey === 'from') {
+        userOverrodeLivePickup = true;
+        setPassengerPickupLocked(false);
+      }
       onRouteEndpointsChanged();
     } catch (error) {
       dropdown.innerHTML = `<div class="autocomplete-header">${escapeHtml(error.message)}</div>`;
@@ -617,11 +665,15 @@ function setupCityAutocomplete(searchInputId, hiddenSelectId, dropdownId, search
   input.chooseCity = (id, name) => {
     const city = graph?.cities?.find(item => item.id === id);
     if (!city || !CITY_COORDS[city.id]) return;
-    const place = { name: `${city.name}, Punjab, India`, coordinates: CITY_COORDS[city.id] };
+    const place = { name: `${city.name}, Punjab, India`, coordinates: CITY_COORDS[city.id], featureType: 'place' };
     selectedPlaces[placeKey] = place;
     input.value = place.name;
     if (hiddenSelect) hiddenSelect.value = place.name;
     dropdown.classList.remove('open');
+    if (placeKey === 'from') {
+      userOverrodeLivePickup = true;
+      setPassengerPickupLocked(false);
+    }
     onRouteEndpointsChanged();
   };
 }
@@ -670,22 +722,26 @@ function onRouteEndpointsChanged(fitView = true) {
   clearTimeout(routeLookupTimer);
   const from = selectedPlaces.from;
   const to = selectedPlaces.to;
+  const fitMapView = fitView && (!passengerLocationLocked || Boolean(to));
   if (!from || !to) {
     selectedRoute = null;
+    renderFarePreview();
     const status = $('mapStatus');
     if (status) status.textContent = 'Search worldwide locations to preview a driving route.';
-    drawMap('mapSvg', 'mapStatus', fitView);
+    drawMap('mapSvg', 'mapStatus', fitMapView);
     return;
   }
   if (from.coordinates[0] === to.coordinates[0] && from.coordinates[1] === to.coordinates[1]) {
     selectedRoute = null;
+    renderFarePreview();
     const status = $('mapStatus');
     if (status) status.textContent = 'Choose two different locations.';
-    drawMap('mapSvg', 'mapStatus', fitView);
+    drawMap('mapSvg', 'mapStatus', fitMapView);
     return;
   }
   selectedRoute = null;
-  drawMap('mapSvg', 'mapStatus', fitView);
+  renderFarePreview();
+  drawMap('mapSvg', 'mapStatus', fitMapView);
   const signature = JSON.stringify([from.coordinates, to.coordinates]);
   routeLookupTimer = setTimeout(async () => {
     try {
@@ -697,21 +753,21 @@ function onRouteEndpointsChanged(fitView = true) {
       const result = data.routes[0];
       selectedRoute = {
         path: [from.name, to.name],
-        distance: Math.max(1, Math.round(result.distance / 1000)),
+        distance: Math.max(0.01, Math.round(result.distance / 10) / 100),
         geometry: result.geometry,
         fromLocation: from,
         toLocation: to,
       };
-      const vCfg = VEHICLE_CONFIG[selectedVehicle] || VEHICLE_CONFIG.sedan;
-      const baseFare = Math.round((55 + 20 * selectedRoute.distance) * vCfg.multiplier);
       const status = $('mapStatus');
-      if (status) status.innerHTML = `<strong>Driving route:</strong> ${escapeHtml(from.name)} → ${escapeHtml(to.name)} · <strong>${selectedRoute.distance} km</strong> · ${vCfg.icon} <strong>Est. Fare: ₹${baseFare}</strong>`;
-      drawMap('mapSvg', 'mapStatus', fitView);
+      if (status) status.innerHTML = `<strong>Driving route:</strong> ${escapeHtml(from.name)} → ${escapeHtml(to.name)} · <strong>${selectedRoute.distance.toFixed(1)} km</strong>`;
+      renderFarePreview();
+      drawMap('mapSvg', 'mapStatus', fitMapView);
     } catch (error) {
       selectedRoute = null;
+      renderFarePreview();
       const status = $('mapStatus');
       if (status) status.textContent = error.message;
-      drawMap('mapSvg', 'mapStatus', fitView);
+      drawMap('mapSvg', 'mapStatus', fitMapView);
     }
   }, 0);
 }
@@ -795,31 +851,6 @@ function drawMap(mapTargetId = 'mapSvg', statusId = 'mapStatus', fitView = true)
   }
 }
 
-// ── Countdown Ticker ──────────────────────────────────────
-function tickCountdowns() {
-  const now = Date.now();
-  document.querySelectorAll('[data-complete-at]').forEach((el) => {
-    const badge = el.querySelector('.countdown-badge, .badge-active');
-    if (!badge) return;
-    const remaining = Math.max(0, Math.round((new Date(el.dataset.completeAt).getTime() - now) / 1000));
-    if (remaining > 0) {
-      badge.textContent = `⏱ ${remaining}s`;
-      badge.style.background = remaining <= 10 ? 'var(--error-bg)' : '';
-      badge.style.color       = remaining <= 10 ? 'var(--error)'    : '';
-    } else {
-      badge.textContent = 'Completing…';
-    }
-  });
-
-  document.querySelectorAll('.mgr-countdown').forEach((el) => {
-    const completeAt = el.dataset.completeAt;
-    if (!completeAt) return;
-    const remaining = Math.max(0, Math.round((new Date(completeAt).getTime() - now) / 1000));
-    el.textContent = remaining > 0 ? `⏱ ${remaining}s` : 'Done';
-    el.className = `badge mgr-countdown ${remaining > 0 ? 'badge-active' : 'badge-completed'}`;
-  });
-}
-
 // ═══════════════════════════════════════════════════════════
 //  PASSENGER WORKFLOW
 // ═══════════════════════════════════════════════════════════
@@ -836,7 +867,7 @@ function renderQueues() {
     pending.innerHTML = '<div class="queue-empty">No pending requests right now</div>';
   } else {
     for (const r of pendingReqs) {
-      const vType = getRequestVehicle(r.id);
+      const vType = getRequestVehicle(r.id, r);
       const vCfg  = VEHICLE_CONFIG[vType] || VEHICLE_CONFIG.sedan;
       const el = document.createElement('div');
       el.className = 'queue-item';
@@ -861,19 +892,18 @@ function renderQueues() {
     active.innerHTML = '<div class="queue-empty">No active rides right now</div>';
   } else {
     for (const r of activeRides) {
-      const vType = getRequestVehicle(r.id) || 'sedan';
+      const vType = getRequestVehicle(r.requestId || r.id, r) || 'sedan';
       const vCfg  = VEHICLE_CONFIG[vType] || VEHICLE_CONFIG.sedan;
       const passCount = r.passengers?.length ?? 1;
       const el = document.createElement('div');
       el.className = 'queue-item';
       el.title = 'Click to show route on map';
-      if (r.autoCompleteAt) el.dataset.completeAt = r.autoCompleteAt;
       el.innerHTML = `
         <span class="queue-item__id">${r.id}</span>
         <span class="queue-item__route">
           ${vCfg.icon} <strong>${r.driverName}</strong> (${vCfg.model}): ${cityName(r.fromCityId)} → ${cityName(r.toCityId)}${passCount > 1 ? ` ×${passCount}` : ''}
         </span>
-        <span class="badge badge-active countdown-badge">active</span>
+        <span class="badge badge-active">active</span>
       `;
       el.addEventListener('click', () => {
         selectedRoute = (selectedRoute === r.route) ? null : r.route;
@@ -881,6 +911,49 @@ function renderQueues() {
       });
       active.appendChild(el);
     }
+  }
+}
+
+function renderPassengerDispatchStatus() {
+  const status = $('dispatchStatus');
+  if (!status || !lastRequestId) return;
+  const request = (appState?.requests ?? []).find(item => item.id === lastRequestId);
+  if (!request) return;
+  const badge = $('passengerRequestStatus');
+  if (badge) badge.innerHTML = statusBadge(request.status);
+  const cancelButton = $('cancelPassengerRequest');
+  if (cancelButton) cancelButton.style.display = request.status === 'pending_driver' ? '' : 'none';
+  const fare = $('passengerEstimatedFare');
+  if (fare && Number.isFinite(Number(request.estimatedFare))) {
+    fare.textContent = request.wantsSharing
+      ? `💰 ₹${Number(request.estimatedFare).toLocaleString('en-IN')} total · ₹${Number(request.farePerPerson).toLocaleString('en-IN')} per person (Estimated)`
+      : `💰 ₹${Number(request.estimatedFare).toLocaleString('en-IN')} total cab fare (Estimated)`;
+  }
+
+  if (request.status === 'accepted') {
+    const driver = (appState?.drivers ?? []).find(item => item.id === request.assignedDriverId);
+    status.textContent = driver
+      ? `Ride accepted by ${driver.name}. They were selected from the pickup proximity search.`
+      : 'A driver accepted your ride.';
+    return;
+  }
+  if (request.status !== 'pending_driver') {
+    status.textContent = request.status === 'cancelled'
+      ? 'You cancelled this request. Drivers will no longer receive it.'
+      : `Ride request status: ${request.status}.`;
+    return;
+  }
+
+  const round = request.dispatchOfferRound || request.offeredDriverIds?.length || 0;
+  const total = request.dispatchDriverOrder?.length || appState?.drivers?.length || 0;
+  if (request.dispatchCurrentDriverId && request.dispatchDeadline) {
+    const serverTime = Date.parse(appState?.serverTime || '') || Date.now();
+    const seconds = Math.max(0, Math.ceil(request.dispatchDeadline - serverTime / 1000));
+    status.textContent = `Searching outward from your pickup · driver ${round} of ${total} has ${seconds}s to accept. Earlier offers remain open.`;
+  } else if (request.dispatchState === 'awaiting_response') {
+    status.textContent = `All ${round} available drivers have received the request. Waiting for one to accept.`;
+  } else {
+    status.textContent = 'No idle drivers are available yet. Your request will be offered when one becomes available.';
   }
 }
 
@@ -976,7 +1049,7 @@ async function submitRide() {
   const wantsSharing = $('wantsSharing').checked;
   const numPersons   = parseInt($('numPersons').value, 10) || 1;
   const vType        = selectedVehicle || 'sedan';
-  const vCfg         = VEHICLE_CONFIG[vType] || VEHICLE_CONFIG.sedan;
+    const vCfg         = VEHICLE_CONFIG[vType] || VEHICLE_CONFIG.sedan;
 
   if (!userName) {
     alert('Please enter your full name.');
@@ -1002,7 +1075,7 @@ async function submitRide() {
 
   try {
     // ── PRESERVED API CALL ──────────────────────────────
-    const res = await apiPost('/api/request', { userName, fromCityId, toCityId, wantsSharing, numPersons, route: selectedRoute, fromLocation: selectedPlaces.from, toLocation: selectedPlaces.to });
+    const res = await apiPost('/api/request', { userName, fromCityId, toCityId, wantsSharing, numPersons, vehicleType: vType, route: selectedRoute, fromLocation: selectedPlaces.from, toLocation: selectedPlaces.to });
     const req = res.request;
     lastRequestId = req.id;
     selectedRoute = req.route;
@@ -1010,8 +1083,8 @@ async function submitRide() {
     // Save vehicle type for this request
     saveRequestVehicle(req.id, vType);
 
-    // Calculate vehicle-adjusted fare
-    const calculatedFare = Math.round(req.soloFare * vCfg.multiplier);
+    // The server prices the selected vehicle and sharing configuration.
+    const calculatedFare = req.estimatedFare ?? req.soloFare;
 
     // Show result card
     const resultEl = $('passengerResult');
@@ -1020,7 +1093,7 @@ async function submitRide() {
       <div class="result-card">
         <div class="result-card__header">
           <div class="result-card__title">🎉 Ride Request Dispatched!</div>
-          ${statusBadge(req.status)}
+          <span id="passengerRequestStatus">${statusBadge(req.status)}</span>
         </div>
         <div class="result-route">📍 ${routeText(req.route)}</div>
         <div class="result-pills">
@@ -1028,12 +1101,14 @@ async function submitRide() {
           <div class="result-pill">📏 ${req.route.distance} km</div>
           <div class="result-pill"><span class="vehicle-badge-pill">${vCfg.icon} ${vCfg.name} (${vCfg.model})</span></div>
           <div class="result-pill">👥 ${req.numPersons ?? numPersons} passenger${(req.numPersons ?? numPersons) > 1 ? 's' : ''}</div>
-          <div class="result-pill fare">💰 ₹${calculatedFare} (Estimated)</div>
+          <div id="passengerEstimatedFare" class="result-pill fare">💰 ₹${calculatedFare} total${wantsSharing ? ` · ₹${req.farePerPerson} per person` : ''} (Estimated)</div>
         </div>
         <div class="muted" style="margin-top:8px">
           ${vCfg.icon} Assigned Vehicle: <strong>${vCfg.name}</strong> (${vCfg.model}) · Licence Plate: <strong>${vCfg.plate}</strong>
         </div>
+        <div id="dispatchStatus" class="muted" style="margin-top:8px">Finding the nearest available driver to your pickup…</div>
         <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+          <button id="cancelPassengerRequest" class="btn btn-danger btn-sm" onclick="cancelPassengerRequest()" ${req.status === 'pending_driver' ? '' : 'style="display:none"'}>✖ Cancel Request</button>
           ${wantsSharing ? `<button class="btn btn-secondary btn-sm" onclick="showShareSection()">🤝 Find Share Rides</button>` : ''}
           <button class="btn btn-ghost btn-sm" onclick="resetPassengerForm()">← Book Another Ride</button>
         </div>
@@ -1054,6 +1129,28 @@ async function submitRide() {
   } finally {
     btn.disabled = false;
     btn.textContent = '🚖 Confirm & Dispatch Cab';
+  }
+}
+
+async function cancelPassengerRequest() {
+  if (!lastRequestId) return;
+  const request = (appState?.requests ?? []).find(item => item.id === lastRequestId);
+  if (!request || request.status !== 'pending_driver') return;
+  if (!confirm('Cancel this ride request? Drivers will stop receiving it.')) return;
+  const button = $('cancelPassengerRequest');
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Cancelling…';
+  }
+  try {
+    await apiPost('/api/request/cancel', { requestId: request.id, userName: request.userName });
+    await refreshAll();
+  } catch (err) {
+    alert(err.message);
+    if (button) {
+      button.disabled = false;
+      button.textContent = '✖ Cancel Request';
+    }
   }
 }
 
@@ -1087,6 +1184,13 @@ function renderDriverSelect() {
   const sel = $('driverSelect');
   if (!sel) return;
   const prev = sel.value;
+  let session = null;
+  try { session = JSON.parse(sessionStorage.getItem('cabsystem_session') || 'null'); } catch (_) {}
+  const sessionDriverIds = {
+    'DRV-101': 'd1', 'DRV-102': 'd3', 'DRV-103': 'd4', 'DRV-108': 'd2',
+    'DRV-104': 'd5', 'DRV-105': 'd6', 'DRV-106': 'd7', 'DRV-107': 'd8'
+  };
+  const assignedDriverId = session?.role === 'driver' ? sessionDriverIds[session.driverId] : null;
   sel.innerHTML = '';
   for (const d of appState?.drivers ?? []) {
     const v = DRIVER_VEHICLES[d.id] || { model: 'Sedan (Dzire)' };
@@ -1095,7 +1199,13 @@ function renderDriverSelect() {
     opt.textContent = `${d.name} — ${v.model} (${cityName(d.cityId)})`;
     sel.appendChild(opt);
   }
-  if (prev) sel.value = prev;
+  if (assignedDriverId && Array.from(sel.options).some(option => option.value === assignedDriverId)) {
+    sel.value = assignedDriverId;
+    sel.disabled = true;
+  } else {
+    sel.disabled = false;
+    if (prev && Array.from(sel.options).some(option => option.value === prev)) sel.value = prev;
+  }
 }
 
 function renderDriverView() {
@@ -1124,7 +1234,11 @@ function renderDriverView() {
   if (!reqContainer) return;
   reqContainer.innerHTML = '';
 
-  const relevant = (appState?.requests ?? []).filter((r) => r.status === 'pending_driver');
+  const relevant = driver?.status === 'idle'
+    ? (appState?.requests ?? []).filter((r) => r.status === 'pending_driver' &&
+      r.vehicleType === driverV.type &&
+      (r.offeredDriverIds ?? []).includes(driverId) && !(r.declinedDriverIds ?? []).includes(driverId))
+    : [];
   const reqCount = $('reqCount');
   if (reqCount) reqCount.textContent = `${relevant.length} pending`;
 
@@ -1136,20 +1250,31 @@ function renderDriverView() {
       </div>`;
   } else {
     for (const r of relevant) {
-      const reqVType = getRequestVehicle(r.id);
+      const reqVType = getRequestVehicle(r.id, r);
       const reqVCfg  = VEHICLE_CONFIG[reqVType] || VEHICLE_CONFIG.sedan;
+      const isCurrentOffer = r.dispatchCurrentDriverId === driverId;
+      const serverTime = Date.parse(appState?.serverTime || '') || Date.now();
+      const offerSeconds = r.dispatchDeadline ? Math.max(0, Math.ceil(r.dispatchDeadline - serverTime / 1000)) : 0;
+      const approximateDistance = r.dispatchDistanceKmByDriver?.[driverId];
       const el = document.createElement('div');
       el.className = 'req-item';
+      el.style.cursor = 'pointer';
       el.innerHTML = `
         <div class="req-item__top">
           <div class="req-item__name">${r.userName}</div>
           <span class="vehicle-badge-pill">${reqVCfg.icon} ${reqVCfg.name}</span>
         </div>
         <div class="req-item__route">📍 ${cityName(r.fromCityId)} → 🏁 ${cityName(r.toCityId)}</div>
+        <div class="muted" style="margin-top:5px">
+          ${isCurrentOffer
+            ? `Closest available offer · next driver in ${offerSeconds}s`
+            : 'Search has expanded; this request remains available to you'}
+          ${Number.isFinite(approximateDistance) ? ` · about ${approximateDistance} km from pickup` : ''}
+        </div>
         <div class="req-item__meta">
           <span>📏 ${r.route?.distance ?? '?'} km</span>
           <span>👥 <strong>${r.numPersons ?? 1}</strong> passenger${(r.numPersons ?? 1) > 1 ? 's' : ''}</span>
-          <span>💰 <strong>₹${Math.round(r.soloFare * reqVCfg.multiplier)}</strong></span>
+          <span>💰 <strong>₹${r.estimatedFare ?? r.soloFare}</strong></span>
           ${r.wantsSharing ? '<span>🤝 Sharing OK</span>' : ''}
         </div>
         <div class="req-item__actions">
@@ -1160,10 +1285,16 @@ function renderDriverView() {
       `;
       el.addEventListener('click', async (e) => {
         const btn = e.target.closest('button');
-        if (!btn) return;
+        if (!btn) {
+          selectedDriverPreviewRequestId = r.id;
+          selectedRoute = r.route;
+          drawMap('mapSvg2', 'mapStatus2');
+          return;
+        }
         const reqId = btn.dataset.req;
         if (btn.dataset.act === 'show') {
           const req = (appState?.requests ?? []).find((x) => x.id === reqId);
+          selectedDriverPreviewRequestId = req?.id ?? null;
           selectedRoute = req?.route ?? null;
           drawMap('mapSvg2', 'mapStatus2');
           return;
@@ -1186,7 +1317,7 @@ function renderDriverView() {
   nContainer.innerHTML = '';
 
   const notes = (appState?.notifications ?? [])
-    .filter((n) => !driverId || n.driverId === driverId || !n.driverId)
+    .filter((n) => n.type !== 'request_created' && (!driverId || n.driverId === driverId || !n.driverId))
     .slice(-15).reverse();
 
   if (!notes.length) {
@@ -1251,14 +1382,10 @@ function renderManagerStats() {
   if (activeBody) {
     activeBody.innerHTML = '';
     if (activeCount) activeCount.textContent = `${activeRides.length} rides`;
-    const now = Date.now();
     for (const r of activeRides) {
-      const vType = getRequestVehicle(r.id);
+      const vType = getRequestVehicle(r.requestId || r.id, r);
       const vCfg  = VEHICLE_CONFIG[vType] || VEHICLE_CONFIG.sedan;
       const passCount = r.passengers?.length ?? 1;
-      const remaining = r.autoCompleteAt
-        ? Math.max(0, Math.round((new Date(r.autoCompleteAt).getTime() - now) / 1000))
-        : null;
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td class="mono">${r.id}</td>
@@ -1266,11 +1393,7 @@ function renderManagerStats() {
         <td><span class="vehicle-badge-pill">${vCfg.icon} ${vCfg.name}</span></td>
         <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${cityName(r.fromCityId)} → ${cityName(r.toCityId)}</td>
         <td>${passCount}x</td>
-        <td>
-          ${remaining !== null
-            ? `<span class="badge mgr-countdown badge-active" data-complete-at="${r.autoCompleteAt}">⏱ ${remaining}s</span>`
-            : '<span class="badge badge-active">Active</span>'}
-        </td>
+        <td><span class="badge badge-active">Active</span></td>
       `;
       activeBody.appendChild(tr);
     }
@@ -1287,7 +1410,7 @@ function renderManagerStats() {
     allBody.innerHTML = '';
     if (allCount) allCount.textContent = `${allReqs.length} requests`;
     for (const r of allReqs) {
-      const reqVType = getRequestVehicle(r.id);
+      const reqVType = getRequestVehicle(r.id, r);
       const reqVCfg  = VEHICLE_CONFIG[reqVType] || VEHICLE_CONFIG.sedan;
       const tr = document.createElement('tr');
       tr.innerHTML = `
@@ -1296,7 +1419,7 @@ function renderManagerStats() {
         <td><span class="vehicle-badge-pill">${reqVCfg.icon} ${reqVCfg.name}</span></td>
         <td>${cityName(r.fromCityId)} → ${cityName(r.toCityId)}</td>
         <td>${r.numPersons ?? 1}</td>
-        <td>₹${Math.round(r.soloFare * reqVCfg.multiplier)}</td>
+        <td>₹${r.estimatedFare ?? r.soloFare}</td>
         <td>${statusBadge(r.status)}</td>
       `;
       allBody.appendChild(tr);
@@ -1413,12 +1536,42 @@ async function refreshAll() {
   // Screen-specific renders
   if (currentScreen === 'passenger') {
     renderQueues();
-    drawMap('mapSvg', 'mapStatus');
+    const passengerName = $('userName')?.value?.trim();
+    const requests = appState?.requests ?? [];
+    const passengerRequest = requests.find(item => item.id === lastRequestId)
+      || [...requests].reverse().find(item => item.userName === passengerName && ['accepted', 'completed'].includes(item.status));
+    if (passengerRequest?.status === 'accepted' && appState?.rides?.some(ride => ride.id === passengerRequest.rideId && ride.status === 'active')) {
+      lastRequestId = passengerRequest.id;
+      selectedRoute = passengerRequest.route;
+    } else if (passengerRequest?.status === 'completed' && passengerRequest.id === lastRequestId) {
+      selectedRoute = null;
+    }
+    drawMap('mapSvg', 'mapStatus', !passengerLocationLocked || Boolean(selectedPlaces.to));
+    renderPassengerDispatchStatus();
     renderIncomingShares($('userName')?.value?.trim());
   }
   if (currentScreen === 'driver') {
     renderDriverSelect();
     renderDriverView();
+    const driverId = $('driverSelect')?.value;
+    const activeRide = driverId
+      ? (appState?.rides ?? []).find(ride => ride.driverId === driverId && ride.status === 'active')
+      : null;
+    if (activeRide) {
+      selectedDriverRideId = activeRide.id;
+      selectedDriverPreviewRequestId = null;
+      selectedRoute = activeRide.route;
+    } else if (selectedDriverRideId) {
+      selectedDriverRideId = null;
+      selectedRoute = null;
+    } else if (selectedDriverPreviewRequestId) {
+      const preview = (appState?.requests ?? []).find(request => request.id === selectedDriverPreviewRequestId);
+      const canPreview = preview?.status === 'pending_driver'
+        && (preview.offeredDriverIds ?? []).includes(driverId)
+        && !(preview.declinedDriverIds ?? []).includes(driverId);
+      selectedRoute = canPreview ? preview.route : null;
+      if (!canPreview) selectedDriverPreviewRequestId = null;
+    } else selectedRoute = null;
     drawMap('mapSvg2', 'mapStatus2');
   }
   if (currentScreen === 'manager') {
@@ -1437,6 +1590,8 @@ function wireEvents() {
 
   // Submit ride button
   $('submitRide')?.addEventListener('click', submitRide);
+  $('numPersons')?.addEventListener('change', renderFarePreview);
+  $('wantsSharing')?.addEventListener('change', renderFarePreview);
 
   // Swap cities button
   $('swapBtn')?.addEventListener('click', () => {
@@ -1540,6 +1695,11 @@ function checkSessionAndRole() {
         if (session.driverId === 'DRV-101') driverSel.value = 'd1';
         else if (session.driverId === 'DRV-102') driverSel.value = 'd3';
         else if (session.driverId === 'DRV-103') driverSel.value = 'd4';
+        else if (session.driverId === 'DRV-108') driverSel.value = 'd2';
+        else if (session.driverId === 'DRV-104') driverSel.value = 'd5';
+        else if (session.driverId === 'DRV-105') driverSel.value = 'd6';
+        else if (session.driverId === 'DRV-106') driverSel.value = 'd7';
+        else if (session.driverId === 'DRV-107') driverSel.value = 'd8';
       }
     }
   }
@@ -1569,7 +1729,6 @@ async function main() {
   }
 
   // Countdown ticker every 1s
-  setInterval(tickCountdowns, 1000);
 
   // Expose functions for inline HTML events
   window.showScreen         = showScreen;
@@ -1578,6 +1737,7 @@ async function main() {
   window.refreshAll         = refreshAll;
   window.confirmReset       = confirmReset;
   window.showShareSection   = showShareSection;
+  window.cancelPassengerRequest = cancelPassengerRequest;
   window.resetPassengerForm = resetPassengerForm;
   window.selectVehicle      = selectVehicle;
   window.quickSelectCity    = quickSelectCity;

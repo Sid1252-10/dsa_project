@@ -481,6 +481,16 @@ const DEMO_ACCOUNTS = {
   ],
   driver: [
     {
+      name: 'Nikhil Sharma',
+      driverId: 'DRV-108',
+      email: 'nikhil@demo.com',
+      phone: '+91 98555 4108',
+      vehicle: 'Mini (Swift PB-08-CD-5678)',
+      password: 'demo1234',
+      badge: 'Driver ID: DRV-108',
+      label: 'Nikhil Sharma · Mini (Swift) · Ludhiana · DRV-108'
+    },
+    {
       name: 'Ravi Kumar',
       driverId: 'DRV-101',
       email: 'driver@demo.com',
@@ -509,6 +519,46 @@ const DEMO_ACCOUNTS = {
       password: 'demo1234',
       badge: 'Driver ID: DRV-103',
       label: 'Simran Kaur · Premium (Camry) · DRV-103'
+    },
+    {
+      name: 'Kabir Gill',
+      driverId: 'DRV-104',
+      email: 'kabir@demo.com',
+      phone: '+91 98555 4104',
+      vehicle: 'Sedan (Dzire CH-01-KB-4104)',
+      password: 'demo1234',
+      badge: 'Driver ID: DRV-104',
+      label: 'Kabir Gill · Sedan (Dzire) · Chandigarh · DRV-104'
+    },
+    {
+      name: 'Mehak Kaur',
+      driverId: 'DRV-105',
+      email: 'mehak@demo.com',
+      phone: '+91 98555 4105',
+      vehicle: 'Mini (Swift PB-65-MH-4105)',
+      password: 'demo1234',
+      badge: 'Driver ID: DRV-105',
+      label: 'Mehak Kaur · Mini (Swift) · Kharar · DRV-105'
+    },
+    {
+      name: 'Amanpreet Singh',
+      driverId: 'DRV-106',
+      email: 'amanpreet@demo.com',
+      phone: '+91 98555 4106',
+      vehicle: 'SUV (Ertiga PB-10-AS-4106)',
+      password: 'demo1234',
+      badge: 'Driver ID: DRV-106',
+      label: 'Amanpreet Singh · SUV (Ertiga) · Ludhiana · DRV-106'
+    },
+    {
+      name: 'Jasleen Kaur',
+      driverId: 'DRV-107',
+      email: 'jasleen@demo.com',
+      phone: '+91 98555 4107',
+      vehicle: 'Premium (Camry PB-11-JK-4107)',
+      password: 'demo1234',
+      badge: 'Driver ID: DRV-107',
+      label: 'Jasleen Kaur · Premium (Camry) · Patiala · DRV-107'
     }
   ],
   manager: [
@@ -753,7 +803,7 @@ function handleLogin() {
 
   const urlVehicle = new URLSearchParams(window.location.search).get('vehicle');
   const vehicleParam = urlVehicle ? `&vehicle=${encodeURIComponent(urlVehicle)}` : '';
-  const redirect = () => { window.location.href = `./app.html?role=${currentRole}${vehicleParam}&build=live-location-center-20261102`; };
+  const redirect = () => { window.location.href = `./app.html?role=${currentRole}${vehicleParam}&build=request-cancellation-20261103`; };
   if (currentRole === 'passenger') {
     btn.textContent = 'Checking location permission…';
     continueToAppAfterPassengerLocationPrompt(redirect);
@@ -854,7 +904,7 @@ function handleRegister() {
 
   const urlVehicle = new URLSearchParams(window.location.search).get('vehicle');
   const vehicleParam = urlVehicle ? `&vehicle=${encodeURIComponent(urlVehicle)}` : '';
-  const redirect = () => { window.location.href = `./app.html?role=${currentRole}${vehicleParam}&build=live-location-center-20261102`; };
+  const redirect = () => { window.location.href = `./app.html?role=${currentRole}${vehicleParam}&build=request-cancellation-20261103`; };
   if (currentRole === 'passenger') {
     btn.textContent = 'Checking location permission…';
     continueToAppAfterPassengerLocationPrompt(redirect);

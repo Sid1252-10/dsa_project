@@ -38,7 +38,7 @@ if errorlevel 1 goto :error
 if errorlevel 1 goto :error
 
 set "PORT=5174"
-set "WEB_URL=http://localhost:5174/index.html?build=live-location-center-20261102"
+set "WEB_URL=http://localhost:5174/index.html?build=request-cancellation-20261103"
 start "Yarivo Web Server" /min "%VENV_PYTHON%" "%~dp0web\server\server.py"
 if errorlevel 1 goto :error
 

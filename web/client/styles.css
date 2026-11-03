@@ -729,6 +729,20 @@ select.form-control {
   border: 1px solid rgba(37,99,235,0.2);
   margin-top: 2px;
 }
+
+.fare-preview {
+  margin: 8px 0 14px;
+  padding: 14px 16px;
+  border: 1px solid #b9d4ff;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #f1f7ff, #ffffff);
+}
+
+.fare-preview__title { font-weight: 700; color: #344054; }
+.fare-preview__math, .fare-preview__note { margin-top: 4px; color: #667085; font-size: 13px; }
+.fare-preview__total { margin-top: 5px; color: #175cd3; font-size: 24px; font-weight: 800; }
+.fare-preview__total span { color: #667085; font-size: 13px; font-weight: 500; }
+.fare-preview__per-person { margin-top: 3px; font-weight: 600; color: #067647; }
 .vehicle-card__tag {
   position: absolute;
   top: -6px;

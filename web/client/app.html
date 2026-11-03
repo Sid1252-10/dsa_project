@@ -60,35 +60,29 @@
               <span class="vehicle-card__emoji">🚗</span>
               <span class="vehicle-card__name">Mini</span>
               <span class="vehicle-card__model">Swift</span>
-              <span class="vehicle-card__fare">₹55</span>
+              <span class="vehicle-card__fare">+₹0</span>
             </div>
             <div class="vehicle-card active" data-vehicle="sedan" onclick="selectVehicle('sedan')">
               <span class="vehicle-card__emoji">🚙</span>
               <span class="vehicle-card__name">Sedan</span>
               <span class="vehicle-card__model">Dzire</span>
-              <span class="vehicle-card__fare">₹75</span>
+              <span class="vehicle-card__fare">+₹75</span>
             </div>
             <div class="vehicle-card" data-vehicle="suv" onclick="selectVehicle('suv')">
               <span class="vehicle-card__tag">Popular</span>
               <span class="vehicle-card__emoji">🚐</span>
               <span class="vehicle-card__name">SUV</span>
               <span class="vehicle-card__model">Ertiga</span>
-              <span class="vehicle-card__fare">₹120</span>
+              <span class="vehicle-card__fare">+₹120</span>
             </div>
             <div class="vehicle-card" data-vehicle="premium" onclick="selectVehicle('premium')">
               <span class="vehicle-card__emoji">⭐</span>
               <span class="vehicle-card__name">Premium</span>
               <span class="vehicle-card__model">Camry</span>
-              <span class="vehicle-card__fare">₹180</span>
-            </div>
-            <div class="vehicle-card" data-vehicle="shared" onclick="selectVehicle('shared')">
-              <span class="vehicle-card__tag" style="background:#12B76A">-35%</span>
-              <span class="vehicle-card__emoji">🤝</span>
-              <span class="vehicle-card__name">Shared</span>
-              <span class="vehicle-card__model">Shared Cab</span>
-              <span class="vehicle-card__fare">₹36</span>
+              <span class="vehicle-card__fare">+₹200</span>
             </div>
           </div>
+          <div class="muted" style="margin-top:7px">Fare: ₹50 per km, plus the vehicle fee shown above.</div>
         </div>
 
         <!-- Hidden vehicle value -->
@@ -130,6 +124,8 @@
           </div>
         </div>
 
+        <div id="farePreview" class="fare-preview hidden" aria-live="polite"></div>
+
         <!-- Number of Persons -->
         <div class="form-group">
           <label class="form-label">PASSENGERS COUNT</label>
@@ -147,7 +143,7 @@
         <div class="toggle-row">
           <div>
             <div class="toggle-label">Enable Ride Sharing</div>
-            <div class="toggle-sub">Match with compatible riders on your route &amp; save up to 35%</div>
+            <div class="toggle-sub">Match with compatible riders; shared prices reflect rider count and trip distance.</div>
           </div>
           <label class="toggle">
             <input type="checkbox" id="wantsSharing" />
@@ -408,7 +404,7 @@
   </div>
 </div>
 
-<script type="module" src="./app.js?v=live-location-center-20261102"></script>
+<script type="module" src="./app.js?v=request-cancellation-20261103"></script>
 </body>
 </html>
 
